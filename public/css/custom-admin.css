@@ -1,0 +1,137 @@
+/* public/css/custom-admin.css */
+
+:root {
+    /* 1. MENGECILKAN SIDEBAR */
+    /* Default sekitar 16-18rem, kita kecilkan jadi 14rem */
+    --sidebar-width: 14rem !important; 
+}
+
+/* 2. MENGECILKAN FONT GLOBAL */
+html {
+    /* Default browser biasanya 16px. Kita turunkan ke 14px atau 13px */
+    font-size: 14px; 
+}
+
+/* 3. MEMBUAT TAMPILAN LEBIH PADAT (COMPACT) */
+
+/* Mengecilkan Input Field (Text Input, Select, dll) */
+.fi-input-wrp {
+    padding-block: 0.05rem !important;
+    min-height: 2rem !important;
+}
+
+.fi-input-wrp input, 
+.fi-input-wrp select, 
+.fi-input-wrp textarea {
+    font-size: 0.9rem !important;
+}
+
+/* Mengecilkan Tombol (Button) */
+.fi-btn {
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+    font-size: 0.85rem !important;      /* Font tombol lebih kecil */
+    min-height: 2rem !important;
+}
+
+/* Mengecilkan Jarak Antar Item di Sidebar */
+.fi-sidebar-item {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+}
+.fi-sidebar-item-label {
+    font-size: 0.9rem !important;
+}
+
+/* Mengecilkan Header Tabel */
+.fi-ta-header-cell {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    font-size: 0.85rem !important;
+}
+
+/* Mengecilkan Isi Tabel */
+.fi-ta-cell {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    font-size: 0.9rem !important;
+}
+
+/* --- WARNA WIDGET STATUS (LIGHT & DARK MODE SUPPORT) --- */
+
+/* 1. STATUS: PENDING (KUNING) */
+/* Light Mode */
+.status-card-pending {
+    background-color: #fef9c3 !important; /* Yellow-100 */
+    border: 1px solid #facc15 !important;
+    color: #854d0e !important; /* Brown Text */
+}
+.status-card-pending .fi-stats-overview-stat-value,
+.status-card-pending .fi-stats-overview-stat-description,
+.status-card-pending svg {
+    color: #a16207 !important;
+}
+
+/* Dark Mode (Background Gelap, Teks Kuning Terang) */
+.dark .status-card-pending {
+    background-color: #422006 !important; /* Yellow-950 (Sangat Gelap) */
+    border: 1px solid #ca8a04 !important;
+    color: #fef08a !important; /* Teks Kuning Muda */
+}
+.dark .status-card-pending .fi-stats-overview-stat-value,
+.dark .status-card-pending .fi-stats-overview-stat-description,
+.dark .status-card-pending svg {
+    color: #facc15 !important; /* Icon Kuning Emas */
+}
+
+
+/* 2. STATUS: VERIFIED (HIJAU) */
+/* Light Mode */
+.status-card-verified {
+    background-color: #dcfce7 !important; /* Green-100 */
+    border: 1px solid #4ade80 !important;
+    color: #14532d !important; /* Dark Green Text */
+}
+.status-card-verified .fi-stats-overview-stat-value,
+.status-card-verified .fi-stats-overview-stat-description,
+.status-card-verified svg {
+    color: #15803d !important;
+}
+
+/* Dark Mode (Background Hijau Pekat, Teks Hijau Neon) */
+.dark .status-card-verified {
+    background-color: #052e16 !important; /* Green-950 */
+    border: 1px solid #166534 !important;
+    color: #bbf7d0 !important; /* Teks Hijau Muda */
+}
+.dark .status-card-verified .fi-stats-overview-stat-value,
+.dark .status-card-verified .fi-stats-overview-stat-description,
+.dark .status-card-verified svg {
+    color: #4ade80 !important; /* Icon Hijau Cerah */
+}
+
+
+/* 3. STATUS: REJECTED (MERAH) */
+/* Light Mode */
+.status-card-rejected {
+    background-color: #fee2e2 !important; /* Red-100 */
+    border: 1px solid #f87171 !important;
+    color: #7f1d1d !important; /* Dark Red Text */
+}
+.status-card-rejected .fi-stats-overview-stat-value,
+.status-card-rejected .fi-stats-overview-stat-description,
+.status-card-rejected svg {
+    color: #b91c1c !important;
+}
+
+/* Dark Mode (Background Merah Marun, Teks Merah Muda) */
+.dark .status-card-rejected {
+    background-color: #450a0a !important; /* Red-950 */
+    border: 1px solid #991b1b !important;
+    color: #fecaca !important; /* Teks Merah Muda */
+}
+.dark .status-card-rejected .fi-stats-overview-stat-value,
+.dark .status-card-rejected .fi-stats-overview-stat-description,
+.dark .status-card-rejected svg {
+    color: #f87171 !important; /* Icon Merah Cerah */
+}
