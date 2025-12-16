@@ -15,156 +15,264 @@ use Illuminate\Support\Facades\Hash; // <--- INI YANG KURANG TADI
 use Illuminate\Support\Str;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Illuminate\Support\Collection;
+use Laravolt\Indonesia\Models\Province;
+use Laravolt\Indonesia\Models\City;
+use Laravolt\Indonesia\Models\District;
+use Laravolt\Indonesia\Models\Village;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Filament\Infolists;
+use Filament\Infolists\Infolist;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\Grid;
+use Filament\Infolists\Components\Group;
+use Filament\Infolists\Components\Actions\Action;
+use Illuminate\Support\Facades\Storage;
 
 class AnggotaResource extends Resource
 {
     protected static ?string $model = User::class;
 
-    protected static ?string $navigationLabel = 'Anggota';
-    protected static ?string $modelLabel = 'Anggota';
+    protected static ?string $navigationLabel = 'Pelaku Usaha';
+    protected static ?string $modelLabel = 'Pelaku Usaha';
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                // --- SECTION 1: DATA DIRI UTAMA ---
-                Forms\Components\Section::make('Informasi Anggota')
+                // --- SECTION 1: DATA DIRI PELAKU USAHA ---
+                Forms\Components\Section::make('Data Diri Pelaku Usaha')
                     ->schema([
                         Forms\Components\TextInput::make('name')
-                            ->label('Nama Lengkap')
+                            ->label('Nama Pelaku Usaha')
                             ->required()
-                            ->live(onBlur: true) // Agar nama folder update saat ketik nama
+                            ->live(onBlur: true) // Agar nama folder update otomatis
                             ->maxLength(255),
 
+                        Forms\Components\TextInput::make('nik')
+                            ->label('NIK (Nomor Induk Kependudukan)')
+                            ->numeric()
+                            ->length(16)
+                            ->required(),
+
+                        Forms\Components\DatePicker::make('tanggal_lahir')
+                            ->label('Tanggal Lahir')
+                            ->required(),
+
                         Forms\Components\TextInput::make('phone')
-                            ->label('No HP / WA')
+                            ->label('Nomor HP / WA')
                             ->tel()
                             ->required(),
 
-                        Forms\Components\TextInput::make('email')
-                            ->label('Email')
-                            ->email(),
-
-                        Forms\Components\TextInput::make('phone')
-                            ->label('No HP / WA')
-                            ->tel()
-                            ->required(),
-
-                        Forms\Components\Textarea::make('address')
-                            ->label('Alamat KTP')
-                            ->columnSpanFull(),
-
-                        Forms\Components\Textarea::make('alamat_domisili')
-                            ->label('Alamat Domisili')
-                            ->columnSpanFull(),
-                    ])->columns(2),
-
-                // --- SECTION 2: DOKUMEN & FILE ---
-                Forms\Components\Section::make('Berkas Dokumen Anggota')
-                    ->schema([
-
-                        // 1. PAS FOTO
-                        Forms\Components\FileUpload::make('file_pas_foto')
-                            ->label('Pas Foto')
-                            ->disk('google')
-                            // LOGIKA FOLDER BARU:
-                            ->directory(
-                                fn($get) =>
-                                'dokumen_anggota_' . Str::slug(Auth::user()->name) . '_' . Auth::id() .
-                                    '/' . Str::slug($get('name') ?? 'temp') . '/foto'
-                            )
-                            ->image()
-                            ->avatar()
-                            ->imageEditor()
-                            ->circleCropper()
-                            ->maxSize(2048)
-                            ->visibility('private')
-                            ->downloadable()
-                            ->required(),
-
-                        // 2. KTP
-                        Forms\Components\FileUpload::make('file_ktp')
-                            ->label('Scan KTP')
-                            ->disk('google')
-                            ->directory(
-                                fn($get) =>
-                                'dokumen_anggota_' . Str::slug(Auth::user()->name) . '_' . Auth::id() .
-                                    '/' . Str::slug($get('name') ?? 'temp') . '/ktp'
-                            )
-                            ->visibility('private')
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'application/pdf'])
-                            ->maxSize(2048)
-                            ->downloadable(),
-
-                        // 3. IJAZAH
-                        Forms\Components\FileUpload::make('file_ijazah')
-                            ->label('Scan Ijazah')
-                            ->disk('google')
-                            ->directory(
-                                fn($get) =>
-                                'dokumen_anggota_' . Str::slug(Auth::user()->name) . '_' . Auth::id() .
-                                    '/' . Str::slug($get('name') ?? 'temp') . '/ijazah'
-                            )
-                            ->visibility('private')
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'application/pdf'])
-                            ->maxSize(2048)
-                            ->downloadable(),
-
-                        // 4. BUKU REKENING
-                        Forms\Components\FileUpload::make('file_buku_rekening')
-                            ->label('Foto Buku Rekening')
-                            ->disk('google')
-                            ->directory(
-                                fn($get) =>
-                                'dokumen_anggota_' . Str::slug(Auth::user()->name) . '_' . Auth::id() .
-                                    '/' . Str::slug($get('name') ?? 'temp') . '/rekening'
-                            )
-                            ->visibility('private')
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'application/pdf'])
-                            ->maxSize(2048)
-                            ->downloadable(),
-
-                    ])->columns(2),
-
-                // --- SECTION 3: DATA TAMBAHAN (Bank & Pendidikan) ---
-                Forms\Components\Section::make('Data Pendukung')
-                    ->collapsed() // Default tertutup biar rapi
-                    ->schema([
+                        // Email & Password Email
                         Forms\Components\Grid::make(2)->schema([
-                            Forms\Components\TextInput::make('nama_bank')
-                                ->label('Nama Bank')
-                                ->placeholder('Contoh: BRI / BCA'),
+                            Forms\Components\TextInput::make('email')
+                                ->label('Alamat Email (Opsional)')
+                                ->email(),
 
-                            Forms\Components\TextInput::make('nomor_rekening')
-                                ->label('Nomor Rekening')
-                                ->numeric(),
+                            Forms\Components\TextInput::make('pass_email')
+                                ->label('Password Email')
+                                ->password()
+                                ->revealable(), // Bisa diintip passwordnya
                         ]),
+                    ])->columns(2),
 
+                // --- SECTION 2: ALAMAT LENGKAP ---
+                Forms\Components\Section::make('Alamat Domisili')
+                    ->schema([
+                        Forms\Components\Textarea::make('address')
+                            ->label('Alamat Jalan / RT RW')
+                            ->columnSpanFull()
+                            ->required(),
+
+                        // --- CHAINING DROPDOWN WILAYAH ---
                         Forms\Components\Grid::make(2)->schema([
-                            Forms\Components\Select::make('pendidikan_terakhir')
-                                ->options([
-                                    'SD' => 'SD',
-                                    'SMP' => 'SMP',
-                                    'SMA' => 'SMA',
-                                    'D3' => 'D3',
-                                    'S1' => 'S1',
-                                    'S2' => 'S2'
-                                ]),
 
-                            Forms\Components\TextInput::make('nama_instansi')
-                                ->label('Sekolah / Kampus'),
+                            // 1. PROVINSI
+                            Forms\Components\Select::make('provinsi')
+                                ->label('Provinsi')
+                                ->options(Province::pluck('name', 'code')) // Ambil Nama & Kode
+                                ->searchable()
+                                ->live() // Aktifkan interaksi real-time
+                                ->afterStateUpdated(function (Set $set) {
+                                    // Reset anak-anaknya jika provinsi berubah
+                                    $set('kabupaten', null);
+                                    $set('kecamatan', null);
+                                    $set('desa', null);
+                                })
+                                ->required(),
+
+                            // 2. KABUPATEN / KOTA
+                            Forms\Components\Select::make('kabupaten')
+                                ->label('Kabupaten / Kota')
+                                ->options(function (Get $get) {
+                                    $provinsiCode = $get('provinsi');
+                                    if (!$provinsiCode) {
+                                        return Collection::empty();
+                                    }
+                                    // Ambil Kota berdasarkan Kode Provinsi
+                                    return City::where('province_code', $provinsiCode)->pluck('name', 'code');
+                                })
+                                ->searchable()
+                                ->live()
+                                ->afterStateUpdated(function (Set $set) {
+                                    $set('kecamatan', null);
+                                    $set('desa', null);
+                                })
+                                ->required(),
+
+                            // 3. KECAMATAN
+                            Forms\Components\Select::make('kecamatan')
+                                ->label('Kecamatan')
+                                ->options(function (Get $get) {
+                                    $kabupatenCode = $get('kabupaten');
+                                    if (!$kabupatenCode) {
+                                        return Collection::empty();
+                                    }
+                                    return District::where('city_code', $kabupatenCode)->pluck('name', 'code');
+                                })
+                                ->searchable()
+                                ->live()
+                                ->afterStateUpdated(function (Set $set) {
+                                    $set('desa', null);
+                                })
+                                ->required(),
+
+                            // 4. DESA / KELURAHAN
+                            Forms\Components\Select::make('desa')
+                                ->label('Desa / Kelurahan')
+                                ->options(function (Get $get) {
+                                    $kecamatanCode = $get('kecamatan');
+                                    if (!$kecamatanCode) {
+                                        return Collection::empty();
+                                    }
+                                    return Village::where('district_code', $kecamatanCode)->pluck('name', 'code');
+                                })
+                                ->searchable()
+                                ->required(),
                         ]),
                     ]),
 
+                // --- SECTION 3: DATA USAHA ---
+                Forms\Components\Section::make('Data Legalitas & Usaha')
+                    ->schema([
+                        Forms\Components\TextInput::make('merk_dagang')
+                            ->label('Merk / Jenis Dagangan')
+                            ->required(),
+
+                        Forms\Components\TextInput::make('nomor_nib')
+                            ->label('Nomor NIB'),
+
+                        Forms\Components\TextInput::make('mitra_halal')
+                            ->default('SABILI')
+                            ->readOnly(),
+                    ])->columns(2),
+
+                // --- SECTION 4: UPLOAD DOKUMEN ---
+                Forms\Components\Section::make('Berkas Dokumen & Foto')
+                    ->description('Format: JPG/PNG. Maksimal 8MB per file. Nama file akan otomatis dirapikan.')
+                    ->schema([
+
+                        // 1. FILE KTP
+                        Forms\Components\FileUpload::make('file_ktp')
+                            ->label('Foto KTP Pelaku Usaha')
+                            ->disk('google')
+                            ->image()
+                            ->visibility('private')
+                            // Direktori: dokumen_anggota_budi/agus
+                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                            // Rename: ktp_agus_172812.jpg
+                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
+                                $name = Str::slug($get('name') ?? 'tanpa-nama');
+                                return 'ktp_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            })
+                            // Optimasi
+                            ->imageResizeMode('cover')
+                            ->imageResizeTargetWidth('1024')
+                            ->maxSize(8192)
+                            ->downloadable()
+                            ->required(),
+
+                        // 2. FOTO NIB
+                        Forms\Components\FileUpload::make('file_foto_nib')
+                            ->label('Foto Dokumen NIB')
+                            ->disk('google')
+                            ->image()
+                            ->visibility('private')
+                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                            // Rename: nib_agus_172812.jpg
+                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
+                                $name = Str::slug($get('name') ?? 'tanpa-nama');
+                                return 'nib_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            })
+                            ->imageResizeMode('cover')
+                            ->imageResizeTargetWidth('1024')
+                            ->maxSize(8192)
+                            ->downloadable(),
+
+                        // 3. FOTO PRODUK
+                        Forms\Components\FileUpload::make('file_foto_produk')
+                            ->label('Foto Produk')
+                            ->disk('google')
+                            ->image()
+                            ->visibility('private')
+                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                            // Rename: produk_agus_172812.jpg
+                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
+                                $name = Str::slug($get('name') ?? 'tanpa-nama');
+                                return 'produk_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            })
+                            ->imageResizeTargetWidth('800')
+                            ->maxSize(8192)
+                            ->downloadable()
+                            ->required(),
+
+                        // 4. FOTO TEMPAT USAHA
+                        Forms\Components\FileUpload::make('file_foto_usaha')
+                            ->label('Foto Tempat Usaha (Tampak Depan)')
+                            ->disk('google')
+                            ->image()
+                            ->visibility('private')
+                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                            // Rename: tempat_usaha_agus_172812.jpg
+                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
+                                $name = Str::slug($get('name') ?? 'tanpa-nama');
+                                return 'tempat_usaha_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            })
+                            ->imageResizeTargetWidth('1024')
+                            ->maxSize(8192)
+                            ->downloadable()
+                            ->required(),
+
+                        // 5. FOTO BERSAMA PENDAMPING
+                        Forms\Components\FileUpload::make('file_foto_bersama')
+                            ->label('Foto Pelaku Usaha dgn Pendamping')
+                            ->disk('google')
+                            ->image()
+                            ->visibility('private')
+                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                            // Rename: foto_bersama_agus_172812.jpg
+                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
+                                $name = Str::slug($get('name') ?? 'tanpa-nama');
+                                return 'foto_bersama_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            })
+                            ->imageResizeTargetWidth('1024')
+                            ->maxSize(8192)
+                            ->downloadable()
+                            ->required(),
+
+                    ])->columns(2),
+
                 // --- HIDDEN FIELDS ---
-                Forms\Components\Hidden::make('pendamping_id')->default(fn() => \Illuminate\Support\Facades\Auth::id()),
+                Forms\Components\Hidden::make('pendamping_id')->default(fn() => Auth::id()),
                 Forms\Components\Hidden::make('role')->default('member'),
                 Forms\Components\Hidden::make('password')
-                    ->default(fn() => \Illuminate\Support\Facades\Hash::make('12345678')) // Default password anggota
-                    // KUNCI PERBAIKANNYA DI SINI:
-                    // Hanya simpan (dehydrate) password ke database saat proses 'create'.
-                    // Saat proses 'edit', field ini akan diabaikan (password lama tetap aman).
+                    ->default(fn() => Hash::make('12345678'))
                     ->dehydrated(fn(string $context): bool => $context === 'create'),
             ]);
     }
@@ -174,12 +282,35 @@ class AnggotaResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->label('Nama Anggota')
+                    ->label('Nama Pelaku Usaha')
                     ->searchable()
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('merk_dagang')
+                    ->label('Usaha/Merk')
+                    ->searchable(),
+
                 Tables\Columns\TextColumn::make('phone')
                     ->label('No HP'),
+
+                // --- KOLOM DESA (Dikonversi dari Kode ke Nama) ---
+                Tables\Columns\TextColumn::make('desa')
+                    ->label('Desa / Kel')
+                    ->formatStateUsing(
+                        fn($state) =>
+                        \Laravolt\Indonesia\Models\Village::where('code', $state)->first()?->name ?? $state
+                    )
+                    ->searchable(), // Note: Search ini mencari Kode, bukan Nama (kecuali relasi dibuat)
+
+                // --- KOLOM KECAMATAN (Dikonversi dari Kode ke Nama) ---
+                Tables\Columns\TextColumn::make('kecamatan')
+                    ->label('Kecamatan')
+                    ->formatStateUsing(
+                        fn($state) =>
+                        \Laravolt\Indonesia\Models\District::where('code', $state)->first()?->name ?? $state
+                    )
+                    ->sortable()
+                    ->searchable(),
 
                 // KOLOM BARU: PENDAMPING
                 // Menampilkan nama pendamping dari relasi
@@ -192,10 +323,6 @@ class AnggotaResource extends Resource
                     // Kolom ini HANYA MUNCUL untuk Superadmin & Admin
                     // Pendamping tidak perlu lihat (karena pasti namanya sendiri)
                     ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
-
-                Tables\Columns\TextColumn::make('created_at')
-                    ->date()
-                    ->label('Terdaftar'),
             ])
             ->filters([
                 // Filter Opsional: Agar Admin bisa memfilter list berdasarkan Pendamping
@@ -211,12 +338,17 @@ class AnggotaResource extends Resource
             ->actions([
                 // --- TOMBOL CETAK KARTU ---
                 Tables\Actions\Action::make('cetak_kartu')
-                    ->label('Cetak Kartu')
+                    ->label('Kartu')
                     ->icon('heroicon-o-identification') // Icon kartu ID
                     ->color('primary')
                     // Arahkan ke Route yang tadi dibuat
                     ->url(fn(User $record) => route('cetak.kartu', $record))
                     ->openUrlInNewTab(), // Buka di tab baru biar tidak close dashboard
+
+                // 1. Tombol View (Detail)
+                Tables\Actions\ViewAction::make()
+                    ->label('Detail') // Opsional ganti label
+                    ->color('info'),  // Opsional ganti warna
 
                 Tables\Actions\EditAction::make(),
                 // Superadmin/Admin boleh delete atau tidak? 
@@ -244,19 +376,29 @@ class AnggotaResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
+        $user = Auth::user();
 
         // 1. Pastikan cuma ambil member
         $query->where('role', 'member');
-
-        $user = Auth::user();
 
         // 2. Jika Superadmin / Admin -> Lihat Semua
         if ($user && ($user->isSuperAdmin() || $user->isAdmin())) {
             return $query;
         }
 
-        // 3. Jika Pendamping -> Hanya lihat miliknya
-        return $query->where('pendamping_id', Auth::id());
+        // 3. Pendamping: Hanya lihat anggota binaannya sendiri
+        if ($user->isPendamping()) {
+            return $query->where('pendamping_id', $user->id);
+        }
+
+        // 4. KOORDINATOR (Logika Baru)
+        if ($user->isKoordinator()) {
+            // Koordinator melihat anggota berdasarkan KECAMATAN
+            // Anggota yang kecamatannya SAMA dengan kecamatan Koordinator
+            return $query->where('kecamatan', $user->kecamatan);
+        }
+
+        return $query;
     }
 
     public static function canViewAny(): bool
@@ -273,7 +415,8 @@ class AnggotaResource extends Resource
         return $user && (
             $user->isSuperAdmin() ||
             $user->isAdmin() ||
-            $user->isPendamping()
+            $user->isPendamping() ||
+            $user->isKoordinator()
         );
     }
 
@@ -298,5 +441,220 @@ class AnggotaResource extends Resource
             'create' => Pages\CreateAnggota::route('/create'),
             'edit' => Pages\EditAnggota::route('/{record}/edit'),
         ];
+    }
+
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist
+            ->schema([
+
+                // --- KOLOM KIRI: DATA UTAMA (2/3 Lebar) ---
+                Group::make([
+
+                    // 1. DATA PRIBADI
+                    Section::make('Data Pribadi')
+                        ->icon('heroicon-o-user')
+                        ->schema([
+                            TextEntry::make('name')
+                                ->label('Nama Lengkap')
+                                ->weight('bold')
+                                ->size(TextEntry\TextEntrySize::Large),
+
+                            TextEntry::make('nik')
+                                ->label('NIK')
+                                ->copyable() // Bisa dicopy klik
+                                ->icon('heroicon-m-identification'),
+
+                            TextEntry::make('tanggal_lahir')
+                                ->label('Tanggal Lahir')
+                                ->date('d F Y'), // Format tanggal: 17 Agustus 1945
+
+                            TextEntry::make('phone')
+                                ->label('No. WhatsApp/HP')
+                                ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true) // Klik lgsg ke WA
+                                ->color('success')
+                                ->icon('heroicon-m-phone'),
+                        ])->columns(2),
+
+                    // 2. ALAMAT & LOKASI
+                    Section::make('Alamat & Lokasi Usaha')
+                        ->icon('heroicon-o-map-pin')
+                        ->schema([
+                            TextEntry::make('address')
+                                ->label('Alamat Lengkap')
+                                ->columnSpanFull(),
+
+                            // Pastikan Anda punya relationship di Model User (belongsTo)
+                            // Jika di database isinya kode angka, pastikan relasi dibuat.
+                            TextEntry::make('province.name')->label('Provinsi'),
+                            TextEntry::make('city.name')->label('Kabupaten/Kota'),
+                            TextEntry::make('district.name')->label('Kecamatan'),
+                            TextEntry::make('village.name')->label('Desa/Kelurahan'),
+                        ])->columns(2),
+
+                    // 3. DATA USAHA
+                    Section::make('Legalitas & Usaha')
+                        ->icon('heroicon-o-briefcase')
+                        ->schema([
+                            TextEntry::make('merk_dagang')
+                                ->label('Merk Dagang')
+                                ->badge()
+                                ->color('info'),
+
+                            TextEntry::make('nomor_nib')
+                                ->label('Nomor NIB')
+                                ->copyable(),
+
+                            TextEntry::make('mitra_halal')
+                                ->label('Mitra Halal')
+                                ->badge()
+                                ->color(fn(string $state): string => match ($state) {
+                                    'YA' => 'success',
+                                    default => 'gray',
+                                }),
+
+                            TextEntry::make('pendamping.name')
+                                ->label('Pendamping')
+                                ->icon('heroicon-m-user-group'),
+                        ])->columns(2),
+                ])->columnSpan(['lg' => 2]),
+
+                // --- KOLOM KANAN: DOKUMEN FOTO (1/3 Lebar) ---
+                Group::make([
+                    Section::make('Dokumen & Foto')
+                        ->description('Klik gambar untuk melihat ukuran penuh.')
+                        ->schema([
+
+                            // FILE KTP
+                            ImageEntry::make('file_ktp')
+                                ->label('KTP')
+                                ->disk('google')        // WAJIB: Sesuai config filesystem
+                                ->visibility('private') // WAJIB: Agar masbug generate URL temp
+                                ->height(150)
+                                ->extraImgAttributes([
+                                    'class' => 'rounded-lg shadow-md border border-gray-200',
+                                    'loading' => 'lazy',
+                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
+                                ])
+                                ->hintAction(
+                                    Action::make('open_ktp')
+                                        ->icon('heroicon-m-arrow-top-right-on-square')
+                                        ->tooltip('Buka di tab baru')
+                                        ->url(function ($record) {
+                                            try {
+                                                return $record->file_ktp ? Storage::disk('google')->url($record->file_ktp) : null;
+                                            } catch (\Exception $e) {
+                                                return null; // Cegah error jika file hilang
+                                            }
+                                        })
+                                        ->openUrlInNewTab()
+                                        ->visible(fn($action) => $action->getUrl() !== null)
+                                ),
+
+                            // FOTO DIRI
+                            ImageEntry::make('file_foto_bersama')
+                                ->label('Foto Bersama')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->height(150)
+                                ->extraImgAttributes(['class' => 'rounded-lg shadow-md border border-gray-200', 'loading' => 'lazy', 'referrerpolicy' => 'no-referrer'])
+                                ->hintAction(
+                                    Action::make('open_foto_bersama')
+                                        ->icon('heroicon-m-arrow-top-right-on-square')
+                                        ->tooltip('Buka di tab baru')
+                                        ->url(function ($record) {
+                                            try {
+                                                return $record->file_foto_bersama ? Storage::disk('google')->url($record->file_foto_bersama) : null;
+                                            } catch (\Exception $e) {
+                                                return null;
+                                            }
+                                        })
+                                        ->openUrlInNewTab()
+                                        ->visible(fn($action) => $action->getUrl() !== null)
+                                ),
+
+                            // TEMPAT USAHA
+                            ImageEntry::make('file_foto_usaha')
+                                ->label('Tempat Usaha')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->height(150)
+                                ->extraImgAttributes([
+                                    'class' => 'rounded-lg shadow-md border border-gray-200',
+                                    'loading' => 'lazy',
+                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
+                                ])
+                                ->hintAction(
+                                    Action::make('open_foto_usaha')
+                                        ->icon('heroicon-m-arrow-top-right-on-square')
+                                        ->tooltip('Buka di tab baru')
+                                        ->url(function ($record) {
+                                            try {
+                                                return $record->file_foto_usaha ? Storage::disk('google')->url($record->file_foto_usaha) : null;
+                                            } catch (\Exception $e) {
+                                                return null;
+                                            }
+                                        })
+                                        ->openUrlInNewTab()
+                                        ->visible(fn($action) => $action->getUrl() !== null)
+                                ),
+
+                            // PRODUK
+                            ImageEntry::make('file_foto_produk')
+                                ->label('Foto Produk')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->height(150)
+                                ->extraImgAttributes([
+                                    'class' => 'rounded-lg shadow-md border border-gray-200',
+                                    'loading' => 'lazy',
+                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
+                                ])
+                                ->hintAction(
+                                    Action::make('open_foto_produk')
+                                        ->icon('heroicon-m-arrow-top-right-on-square')
+                                        ->tooltip('Buka di tab baru')
+                                        ->url(function ($record) {
+                                            try {
+                                                return $record->file_foto_produk ? Storage::disk('google')->url($record->file_foto_produk) : null;
+                                            } catch (\Exception $e) {
+                                                return null;
+                                            }
+                                        })
+                                        ->openUrlInNewTab()
+                                        ->visible(fn($action) => $action->getUrl() !== null)
+                                ),
+
+                            // NIB
+                            ImageEntry::make('file_foto_nib')
+                                ->label('Dokumen NIB')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->height(150)
+                                ->extraImgAttributes([
+                                    'class' => 'rounded-lg shadow-md border border-gray-200',
+                                    'loading' => 'lazy',
+                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
+                                ])
+                                ->hintAction(
+                                    Action::make('open_foto_nib')
+                                        ->icon('heroicon-m-arrow-top-right-on-square')
+                                        ->tooltip('Buka di tab baru')
+                                        ->url(function ($record) {
+                                            try {
+                                                return $record->file_foto_nib ? Storage::disk('google')->url($record->file_foto_nib) : null;
+                                            } catch (\Exception $e) {
+                                                return null;
+                                            }
+                                        })
+                                        ->openUrlInNewTab()
+                                        ->visible(fn($action) => $action->getUrl() !== null)
+                                ),
+                        ])
+                        // Agar gambar berjejer ke bawah rapi di sidebar kanan
+                        ->columns(1),
+                ])->columnSpan(['lg' => 1]),
+
+            ])->columns(3); // Total Grid Utama dibagi 3
     }
 }

@@ -2,8 +2,10 @@
 
 namespace App\Filament\Pages\Auth;
 
+use App\Models\User;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -118,48 +120,6 @@ class EditProfile extends BaseEditProfile
 											->revealable(),
 									]),
 
-								Section::make('Berkas Dokumen')
-									->icon('heroicon-o-document-arrow-up')
-									->schema([
-										FileUpload::make('file_pas_foto')
-											->label('Pas Foto')
-											->disk('google') // <--- Wajib: Arahkan ke Google Drive
-											->directory(fn() => 'dokumen_' . Str::slug(Auth::user()->name) . '_' . Auth::id() . '/foto')
-											->image() // Validasi: Hanya boleh file gambar
-											->avatar() // Tampilan di form jadi bulat (cocok untuk profil)
-											->imageEditor() // Mengaktifkan fitur edit/crop sebelum upload
-											->circleCropper() // Mengaktifkan crop lingkaran
-											->maxSize(2048) // Maksimal 2MB agar upload tidak terlalu lama
-											->downloadable(), // Agar admin/user bisa download file aslinya
-
-										FileUpload::make('file_ktp')
-											->label('Upload KTP')
-											->disk('google') // <--- INI KUNCINYA
-											->directory(fn() => 'dokumen_' . Str::slug(Auth::user()->name) . '_' . Auth::id() . '/ktp')
-											->visibility('private')
-											->acceptedFileTypes(['image/*', 'application/pdf'])
-											->maxSize(2048)
-											->downloadable(),
-
-										FileUpload::make('file_ijazah')
-											->label('Upload Ijazah')
-											->disk('google') // <--- INI KUNCINYA
-											->directory(fn() => 'dokumen_' . Str::slug(Auth::user()->name) . '_' . Auth::id() . '/ijazah')
-											->visibility('private')
-											->acceptedFileTypes(['image/*', 'application/pdf'])
-											->maxSize(2048)
-											->downloadable(),
-
-										FileUpload::make('file_buku_rekening')
-											->label('Buku Rekening')
-											->disk('google') // <--- INI KUNCINYA
-											->directory(fn() => 'dokumen_' . Str::slug(Auth::user()->name) . '_' . Auth::id() . '/rekening')
-											->visibility('private')
-											->acceptedFileTypes(['image/*', 'application/pdf'])
-											->maxSize(2048)
-											->downloadable(),
-									]),
-
 								Section::make('Ganti Password Login')
 									->schema([
 										$this->getPasswordFormComponent(),
@@ -169,6 +129,13 @@ class EditProfile extends BaseEditProfile
 									->collapsed(), // Default tertutup biar rapi
 							]),
 					]),
+
+				// --- BAGIAN BAWAH (DOKUMEN FULL LEBAR) ---
+				Group::make(User::getDokumenPendampingFormSchema())
+					// Opsional: Pastikan hanya pendamping yang melihat
+					->visible(fn() => auth()->user()->role === 'pendamping')
+					->columnSpanFull(), // Paksa lebar penuh
+
 			]);
 	}
 }
