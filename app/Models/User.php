@@ -162,6 +162,54 @@ class User extends Authenticatable implements FilamentUser
         return $this->belongsTo(Village::class, 'desa', 'code');
     }
 
+    /**
+     * Cek apakah profil Pendamping sudah lengkap.
+     */
+    public function isProfileComplete(): bool
+    {
+        // 1. Daftar kolom text yang wajib diisi
+        $requiredFields = [
+            'phone',
+            'address',
+            'alamat_domisili',
+            'pass_email_pendamping',
+            'akun_halal',
+            'pass_akun_halal',
+            'provinsi',
+            'kabupaten',
+            'kecamatan',
+            'desa',
+            'pendidikan_terakhir',
+            'nama_instansi',
+            'nama_bank',
+            'nomor_rekening',
+        ];
+
+        // 2. Daftar kolom file/dokumen yang wajib diupload
+        $requiredFiles = [
+            'file_pas_foto',
+            'file_ktp',
+            'file_ijazah',       // Opsional: uncomment jika wajib
+            'file_buku_rekening' // Opsional: uncomment jika wajib
+        ];
+
+        // Cek Kolom Text
+        foreach ($requiredFields as $field) {
+            if (empty($this->$field)) {
+                return false;
+            }
+        }
+
+        // Cek Kolom File (biasanya string path, tidak boleh null/kosong)
+        foreach ($requiredFiles as $file) {
+            if (empty($this->$file)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static function getDokumenPendampingFormSchema()
     {
         return [
@@ -196,7 +244,8 @@ class User extends Authenticatable implements FilamentUser
                             ->imageResizeTargetWidth('500')
                             ->maxSize(10240)
                             ->downloadable()
-                            ->openable(),
+                            ->openable()
+                            ->required(),
 
                         // 2. BUKU REKENING
                         Forms\Components\FileUpload::make('file_buku_rekening')
@@ -218,7 +267,8 @@ class User extends Authenticatable implements FilamentUser
                             ->imageResizeTargetWidth('1024')
                             ->maxSize(10240)
                             ->downloadable()
-                            ->openable(),
+                            ->openable()
+                            ->required(),
                     ])->columns(2),
 
                     Forms\Components\Group::make([
@@ -244,7 +294,8 @@ class User extends Authenticatable implements FilamentUser
                             ->imageResizeTargetWidth('1024')
                             ->maxSize(10240)
                             ->downloadable()
-                            ->openable(),
+                            ->openable()
+                            ->required(),
 
                         // 4. IJAZAH
                         Forms\Components\FileUpload::make('file_ijazah')
@@ -266,7 +317,8 @@ class User extends Authenticatable implements FilamentUser
                             ->imageResizeTargetWidth('1024')
                             ->maxSize(10240)
                             ->downloadable()
-                            ->openable(),
+                            ->openable()
+                            ->required(),
                     ])->columns(2),
                 ]),
         ];

@@ -25,7 +25,7 @@
                     <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white font-bold">
                         S
                     </div>
-                    <span class="font-bold text-xl tracking-tight text-gray-900">Sabili Community</span>
+                    <span class="font-bold text-xl tracking-tight text-gray-900">Sabili</span>
                 </div>
 
                 <div class="flex items-center gap-4">
@@ -43,7 +43,7 @@
                         </a>
                         <a href="/admin/register"
                             class="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-full font-medium transition shadow-md">
-                            Daftar Sekarang
+                            Daftar
                         </a>
                     @endauth
                 </div>

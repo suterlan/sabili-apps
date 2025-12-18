@@ -33,6 +33,7 @@ use Filament\Infolists\Components\Group;
 use Filament\Infolists\Components\Actions\Action;
 use Illuminate\Support\Facades\Storage;
 
+
 class AnggotaResource extends Resource
 {
     protected static ?string $model = User::class;
@@ -336,15 +337,6 @@ class AnggotaResource extends Resource
                     ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
             ])
             ->actions([
-                // --- TOMBOL CETAK KARTU ---
-                Tables\Actions\Action::make('cetak_kartu')
-                    ->label('Kartu')
-                    ->icon('heroicon-o-identification') // Icon kartu ID
-                    ->color('primary')
-                    // Arahkan ke Route yang tadi dibuat
-                    ->url(fn(User $record) => route('cetak.kartu', $record))
-                    ->openUrlInNewTab(), // Buka di tab baru biar tidak close dashboard
-
                 // 1. Tombol View (Detail)
                 Tables\Actions\ViewAction::make()
                     ->label('Detail') // Opsional ganti label
@@ -448,10 +440,12 @@ class AnggotaResource extends Resource
         return $infolist
             ->schema([
 
-                // --- KOLOM KIRI: DATA UTAMA (2/3 Lebar) ---
+                // =========================================================
+                // BAGIAN 1: DATA TEKS (Menggunakan Grid 2 Kolom)
+                // =========================================================
                 Group::make([
 
-                    // 1. DATA PRIBADI
+                    // KIRI: DATA PRIBADI
                     Section::make('Data Pribadi')
                         ->icon('heroicon-o-user')
                         ->schema([
@@ -462,37 +456,35 @@ class AnggotaResource extends Resource
 
                             TextEntry::make('nik')
                                 ->label('NIK')
-                                ->copyable() // Bisa dicopy klik
+                                ->copyable()
                                 ->icon('heroicon-m-identification'),
 
                             TextEntry::make('tanggal_lahir')
                                 ->label('Tanggal Lahir')
-                                ->date('d F Y'), // Format tanggal: 17 Agustus 1945
+                                ->date('d F Y'),
 
                             TextEntry::make('phone')
-                                ->label('No. WhatsApp/HP')
-                                ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true) // Klik lgsg ke WA
+                                ->label('No. WhatsApp')
+                                ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                 ->color('success')
                                 ->icon('heroicon-m-phone'),
-                        ])->columns(2),
+                        ])->columnSpan(1), // Ambil 1 kolom
 
-                    // 2. ALAMAT & LOKASI
-                    Section::make('Alamat & Lokasi Usaha')
+                    // KANAN: ALAMAT
+                    Section::make('Alamat & Lokasi')
                         ->icon('heroicon-o-map-pin')
                         ->schema([
                             TextEntry::make('address')
-                                ->label('Alamat Lengkap')
+                                ->label('Alamat')
                                 ->columnSpanFull(),
 
-                            // Pastikan Anda punya relationship di Model User (belongsTo)
-                            // Jika di database isinya kode angka, pastikan relasi dibuat.
                             TextEntry::make('province.name')->label('Provinsi'),
-                            TextEntry::make('city.name')->label('Kabupaten/Kota'),
+                            TextEntry::make('city.name')->label('Kab/Kota'),
                             TextEntry::make('district.name')->label('Kecamatan'),
-                            TextEntry::make('village.name')->label('Desa/Kelurahan'),
-                        ])->columns(2),
+                            TextEntry::make('village.name')->label('Desa/Kel'),
+                        ])->columnSpan(1), // Ambil 1 kolom
 
-                    // 3. DATA USAHA
+                    // BAWAH: LEGALITAS (Full Width di dalam grid data)
                     Section::make('Legalitas & Usaha')
                         ->icon('heroicon-o-briefcase')
                         ->schema([
@@ -516,145 +508,97 @@ class AnggotaResource extends Resource
                             TextEntry::make('pendamping.name')
                                 ->label('Pendamping')
                                 ->icon('heroicon-m-user-group'),
-                        ])->columns(2),
-                ])->columnSpan(['lg' => 2]),
-
-                // --- KOLOM KANAN: DOKUMEN FOTO (1/3 Lebar) ---
-                Group::make([
-                    Section::make('Dokumen & Foto')
-                        ->description('Klik gambar untuk melihat ukuran penuh.')
-                        ->schema([
-
-                            // FILE KTP
-                            ImageEntry::make('file_ktp')
-                                ->label('KTP')
-                                ->disk('google')        // WAJIB: Sesuai config filesystem
-                                ->visibility('private') // WAJIB: Agar masbug generate URL temp
-                                ->height(150)
-                                ->extraImgAttributes([
-                                    'class' => 'rounded-lg shadow-md border border-gray-200',
-                                    'loading' => 'lazy',
-                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
-                                ])
-                                ->hintAction(
-                                    Action::make('open_ktp')
-                                        ->icon('heroicon-m-arrow-top-right-on-square')
-                                        ->tooltip('Buka di tab baru')
-                                        ->url(function ($record) {
-                                            try {
-                                                return $record->file_ktp ? Storage::disk('google')->url($record->file_ktp) : null;
-                                            } catch (\Exception $e) {
-                                                return null; // Cegah error jika file hilang
-                                            }
-                                        })
-                                        ->openUrlInNewTab()
-                                        ->visible(fn($action) => $action->getUrl() !== null)
-                                ),
-
-                            // FOTO DIRI
-                            ImageEntry::make('file_foto_bersama')
-                                ->label('Foto Bersama')
-                                ->disk('google')
-                                ->visibility('private')
-                                ->height(150)
-                                ->extraImgAttributes(['class' => 'rounded-lg shadow-md border border-gray-200', 'loading' => 'lazy', 'referrerpolicy' => 'no-referrer'])
-                                ->hintAction(
-                                    Action::make('open_foto_bersama')
-                                        ->icon('heroicon-m-arrow-top-right-on-square')
-                                        ->tooltip('Buka di tab baru')
-                                        ->url(function ($record) {
-                                            try {
-                                                return $record->file_foto_bersama ? Storage::disk('google')->url($record->file_foto_bersama) : null;
-                                            } catch (\Exception $e) {
-                                                return null;
-                                            }
-                                        })
-                                        ->openUrlInNewTab()
-                                        ->visible(fn($action) => $action->getUrl() !== null)
-                                ),
-
-                            // TEMPAT USAHA
-                            ImageEntry::make('file_foto_usaha')
-                                ->label('Tempat Usaha')
-                                ->disk('google')
-                                ->visibility('private')
-                                ->height(150)
-                                ->extraImgAttributes([
-                                    'class' => 'rounded-lg shadow-md border border-gray-200',
-                                    'loading' => 'lazy',
-                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
-                                ])
-                                ->hintAction(
-                                    Action::make('open_foto_usaha')
-                                        ->icon('heroicon-m-arrow-top-right-on-square')
-                                        ->tooltip('Buka di tab baru')
-                                        ->url(function ($record) {
-                                            try {
-                                                return $record->file_foto_usaha ? Storage::disk('google')->url($record->file_foto_usaha) : null;
-                                            } catch (\Exception $e) {
-                                                return null;
-                                            }
-                                        })
-                                        ->openUrlInNewTab()
-                                        ->visible(fn($action) => $action->getUrl() !== null)
-                                ),
-
-                            // PRODUK
-                            ImageEntry::make('file_foto_produk')
-                                ->label('Foto Produk')
-                                ->disk('google')
-                                ->visibility('private')
-                                ->height(150)
-                                ->extraImgAttributes([
-                                    'class' => 'rounded-lg shadow-md border border-gray-200',
-                                    'loading' => 'lazy',
-                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
-                                ])
-                                ->hintAction(
-                                    Action::make('open_foto_produk')
-                                        ->icon('heroicon-m-arrow-top-right-on-square')
-                                        ->tooltip('Buka di tab baru')
-                                        ->url(function ($record) {
-                                            try {
-                                                return $record->file_foto_produk ? Storage::disk('google')->url($record->file_foto_produk) : null;
-                                            } catch (\Exception $e) {
-                                                return null;
-                                            }
-                                        })
-                                        ->openUrlInNewTab()
-                                        ->visible(fn($action) => $action->getUrl() !== null)
-                                ),
-
-                            // NIB
-                            ImageEntry::make('file_foto_nib')
-                                ->label('Dokumen NIB')
-                                ->disk('google')
-                                ->visibility('private')
-                                ->height(150)
-                                ->extraImgAttributes([
-                                    'class' => 'rounded-lg shadow-md border border-gray-200',
-                                    'loading' => 'lazy',
-                                    'referrerpolicy' => 'no-referrer', // <--- INI SOLUSINYA
-                                ])
-                                ->hintAction(
-                                    Action::make('open_foto_nib')
-                                        ->icon('heroicon-m-arrow-top-right-on-square')
-                                        ->tooltip('Buka di tab baru')
-                                        ->url(function ($record) {
-                                            try {
-                                                return $record->file_foto_nib ? Storage::disk('google')->url($record->file_foto_nib) : null;
-                                            } catch (\Exception $e) {
-                                                return null;
-                                            }
-                                        })
-                                        ->openUrlInNewTab()
-                                        ->visible(fn($action) => $action->getUrl() !== null)
-                                ),
                         ])
-                        // Agar gambar berjejer ke bawah rapi di sidebar kanan
-                        ->columns(1),
-                ])->columnSpan(['lg' => 1]),
+                        ->columns(4) // Isinya dibagi 4 agar memanjang kesamping
+                        ->columnSpanFull(), // Section ini ambil lebar penuh
 
-            ])->columns(3); // Total Grid Utama dibagi 3
+                ])
+                    ->columns(2) // Layout utama data teks dibagi 2 (Kiri/Kanan)
+                    ->columnSpanFull(), // PENTING: Paksa grup ini ambil lebar penuh layar
+
+
+                // =========================================================
+                // BAGIAN 2: DOKUMEN FOTO (Di Bawah Sendiri - 2 KOLOM)
+                // =========================================================
+                Section::make('Dokumen & Foto')
+                    ->description('Klik ikon panah untuk membuka file asli.')
+                    ->schema([
+                        // 1. KTP
+                        ImageEntry::make('file_ktp')
+                            ->label('KTP')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_ktp))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_ktp')),
+
+                        // 2. FOTO BERSAMA
+                        ImageEntry::make('file_foto_bersama')
+                            ->label('Foto Bersama')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_foto_bersama))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_foto_bersama')),
+
+                        // 3. TEMPAT USAHA
+                        ImageEntry::make('file_foto_usaha')
+                            ->label('Tempat Usaha')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_foto_usaha))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_foto_usaha')),
+
+                        // 4. FOTO PRODUK
+                        ImageEntry::make('file_foto_produk')
+                            ->label('Foto Produk')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_foto_produk))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_foto_produk')),
+
+                        // 5. NIB
+                        ImageEntry::make('file_foto_nib')
+                            ->label('Dokumen NIB')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_foto_nib))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_foto_nib')),
+                    ])
+                    // --- UPDATE GRID DI SINI ---
+                    ->columns([
+                        'default' => 1, // HP tetap 1 kolom tumpuk
+                        'md' => 2,      // Tablet & Desktop jadi 2 kolom
+                    ])
+                    ->columnSpanFull(),
+
+            ]);
+    }
+
+    // --- HELPER FUNCTIONS AGAR KODE LEBIH BERSIH & RAPI ---
+    // (Tambahkan fungsi ini di dalam Class Resource Anda, di bawah method infolist)
+
+    protected static function getBase64Image($path)
+    {
+        if (! $path) return null;
+        try {
+            $disk = Storage::disk('google');
+            if ($disk->exists($path)) {
+                $content = $disk->get($path);
+                $mime = $disk->mimeType($path);
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+        return null;
+    }
+
+    protected static function getOpenAction($columnName)
+    {
+        return Action::make('open_' . $columnName)
+            ->icon('heroicon-m-arrow-top-right-on-square')
+            ->tooltip('Buka file asli')
+            ->url(fn($record) => $record->$columnName ? Storage::disk('google')->url($record->$columnName) : null)
+            ->openUrlInNewTab()
+            ->visible(fn($record) => $record->$columnName);
     }
 }

@@ -11,10 +11,17 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Pages\Auth\EditProfile as BaseEditProfile;
 use Filament\Support\Enums\MaxWidth;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Laravolt\Indonesia\Models\City;
+use Laravolt\Indonesia\Models\District;
+use Laravolt\Indonesia\Models\Province;
+use Laravolt\Indonesia\Models\Village;
 
 class EditProfile extends BaseEditProfile
 {
@@ -54,15 +61,72 @@ class EditProfile extends BaseEditProfile
 												->required(),
 										]),
 										$this->getEmailFormComponent(),
+									]),
+
+								// 1. DATA WILAYAH
+								Section::make('Wilayah Kerja / Domisili')
+									->icon('heroicon-o-map')
+									->schema([
 										Grid::make(2)->schema([
 											Textarea::make('address')
 												->label('Alamat KTP')
-												->rows(3),
+												->rows(3)
+												->required(),
 											Textarea::make('alamat_domisili')
 												->label('Alamat Domisili')
-												->rows(3),
+												->rows(3)
+												->required(),
 										]),
-									]),
+
+										Select::make('provinsi')
+											->label('Provinsi')
+											->options(Province::pluck('name', 'code'))
+											->searchable()
+											->live()
+											->afterStateUpdated(function (Set $set) {
+												$set('kabupaten', null);
+												$set('kecamatan', null);
+												$set('desa', null);
+											})
+											->required(),
+
+										Select::make('kabupaten')
+											->label('Kabupaten / Kota')
+											->options(function (Get $get) {
+												$prov = $get('provinsi');
+												if (!$prov) return Collection::empty();
+												return City::where('province_code', $prov)->pluck('name', 'code');
+											})
+											->searchable()
+											->live()
+											->afterStateUpdated(function (Set $set) {
+												$set('kecamatan', null);
+												$set('desa', null);
+											})
+											->required(),
+
+										Select::make('kecamatan')
+											->label('Kecamatan')
+											->options(function (Get $get) {
+												$kab = $get('kabupaten');
+												if (!$kab) return Collection::empty();
+												return District::where('city_code', $kab)->pluck('name', 'code');
+											})
+											->searchable()
+											->live()
+											->afterStateUpdated(fn(Set $set) => $set('desa', null))
+											->required(),
+
+										Select::make('desa')
+											->label('Desa / Kelurahan')
+											->options(function (Get $get) {
+												$kec = $get('kecamatan');
+												if (!$kec) return Collection::empty();
+												return Village::where('district_code', $kec)->pluck('name', 'code');
+											})
+											->searchable()
+											->required(),
+									])->columns(2),
 
 								Section::make('Data Pendidikan & Pekerjaan')
 									->icon('heroicon-o-academic-cap')
@@ -79,9 +143,11 @@ class EditProfile extends BaseEditProfile
 													'S3' => 'S3',
 												])
 												->searchable()
-												->label('Pendidikan Terakhir'),
+												->label('Pendidikan Terakhir')
+												->required(),
 											TextInput::make('nama_instansi')
-												->label('Nama Sekolah / Instansi'),
+												->label('Nama Sekolah / Instansi')
+												->required(),
 										]),
 									]),
 
@@ -91,10 +157,12 @@ class EditProfile extends BaseEditProfile
 									->schema([
 										TextInput::make('nama_bank')
 											->label('Nama Bank')
-											->placeholder('Contoh: BCA / Mandiri'),
+											->placeholder('Contoh: BCA / Mandiri')
+											->required(),
 										TextInput::make('nomor_rekening')
 											->label('Nomor Rekening')
-											->numeric(),
+											->numeric()
+											->required(),
 									]),
 							]),
 
@@ -109,15 +177,18 @@ class EditProfile extends BaseEditProfile
 											->label('Password Email')
 											->password()
 											->revealable()
-											->helperText('Password email utama Anda.'),
+											->helperText('Password email utama Anda.')
+											->required(),
 
 										TextInput::make('akun_halal')
-											->label('User Akun Halal'),
+											->label('User Akun Halal')
+											->required(),
 
 										TextInput::make('pass_akun_halal')
 											->label('Pass Akun Halal')
 											->password()
-											->revealable(),
+											->revealable()
+											->required(),
 									]),
 
 								Section::make('Ganti Password Login')

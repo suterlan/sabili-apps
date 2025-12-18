@@ -298,28 +298,27 @@ class UserResource extends Resource
     {
         return $infolist
             ->schema([
-                // Grid Utama dibagi 3 bagian
+                // Grid Utama: 3 Kolom
                 InfolistGrid::make(3)
                     ->schema([
 
                         // ========================================================
-                        // KOLOM KIRI (SPAN 2): DATA & DOKUMEN
+                        // KOLOM KIRI (SPAN 2)
                         // ========================================================
                         InfolistGroup::make([
 
-                            // 1. DATA WILAYAH & DOMISILI
+                            // 1. DATA WILAYAH
                             InfolistSection::make('Wilayah Kerja / Domisili')
                                 ->icon('heroicon-o-map')
                                 ->schema([
                                     TextEntry::make('address')->label('Alamat Lengkap')->columnSpanFull(),
-                                    // Relasi Wilayah (Pastikan relasi di Model User sudah ada)
                                     TextEntry::make('province.name')->label('Provinsi'),
                                     TextEntry::make('city.name')->label('Kabupaten/Kota'),
                                     TextEntry::make('district.name')->label('Kecamatan'),
                                     TextEntry::make('village.name')->label('Desa/Kelurahan'),
                                 ])->columns(2),
 
-                            // 2. INFORMASI BANK & PENDIDIKAN (Khusus Pendamping)
+                            // 2. INFORMASI BANK
                             InfolistSection::make('Informasi Bank & Pendidikan')
                                 ->icon('heroicon-o-academic-cap')
                                 ->visible(fn($record) => $record->role === 'pendamping')
@@ -330,134 +329,10 @@ class UserResource extends Resource
                                     TextEntry::make('nama_instansi')->label('Sekolah/Kampus'),
                                 ])->columns(2),
 
-                            // 3. BERKAS DOKUMEN (GOOGLE DRIVE)
-                            // Ini bagian yang disesuaikan dengan kode Form Upload Anda
-                            InfolistSection::make('Berkas Dokumen Pendamping')
-                                ->icon('heroicon-o-folder-open')
-                                ->visible(fn($record) => $record->role === 'pendamping')
-                                ->schema([
-
-                                    // A. PAS FOTO (Tampil Kotak)
-                                    ImageEntry::make('file_pas_foto')
-                                        ->label('Pas Foto')
-                                        ->disk('google')         // WAJIB: Sesuai disk upload
-                                        ->visibility('private')  // WAJIB: Agar generate signed URL
-                                        ->height(200)
-                                        ->extraImgAttributes([
-                                            'class' => 'rounded-lg shadow-md object-cover aspect-square', // Kotak
-                                            'loading' => 'lazy',
-                                            'referrerpolicy' => 'no-referrer', // Agar tidak pecah di localhost
-                                        ])
-                                        // Tombol Download/Buka Tab Baru (Safety Net jika gambar pecah)
-                                        ->hintAction(
-                                            Action::make('open_pas_foto')
-                                                ->icon('heroicon-m-arrow-top-right-on-square')
-                                                ->url(function ($record) {
-                                                    // LOGIKA AMAN: Coba ambil URL, jika gagal (file hilang), kembalikan null
-                                                    try {
-                                                        if ($record->file_pas_foto) {
-                                                            return Storage::disk('google')->url($record->file_pas_foto);
-                                                        }
-                                                    } catch (\Exception $e) {
-                                                        return null; // File tidak ditemukan, tombol tidak ada link
-                                                    }
-                                                    return null;
-                                                })
-                                                ->openUrlInNewTab()
-                                                // Sembunyikan tombol jika URL null (file hilang)
-                                                ->visible(fn($action) => $action->getUrl() !== null)
-                                        ),
-
-                                    // B. BUKU REKENING
-                                    ImageEntry::make('file_buku_rekening')
-                                        ->label('Buku Rekening')
-                                        ->disk('google')
-                                        ->visibility('private')
-                                        ->height(200)
-                                        ->extraImgAttributes([
-                                            'class' => 'rounded-lg shadow-md border border-gray-200',
-                                            'loading' => 'lazy',
-                                            'referrerpolicy' => 'no-referrer',
-                                        ])
-                                        ->hintAction(
-                                            Action::make('open_rekening')
-                                                ->icon('heroicon-m-arrow-top-right-on-square')
-                                                ->url(function ($record) {
-                                                    try {
-                                                        if ($record->file_buku_rekening) {
-                                                            return Storage::disk('google')->url($record->file_buku_rekening);
-                                                        }
-                                                    } catch (\Exception $e) {
-                                                        return null;
-                                                    }
-                                                    return null;
-                                                })
-                                                ->openUrlInNewTab()
-                                                ->visible(fn($action) => $action->getUrl() !== null)
-                                        ),
-
-                                    // C. KTP
-                                    ImageEntry::make('file_ktp')
-                                        ->label('KTP')
-                                        ->disk('google')
-                                        ->visibility('private')
-                                        ->height(200)
-                                        ->extraImgAttributes([
-                                            'class' => 'rounded-lg shadow-md border border-gray-200',
-                                            'loading' => 'lazy',
-                                            'referrerpolicy' => 'no-referrer',
-                                        ])
-                                        ->hintAction(
-                                            Action::make('open_ktp')
-                                                ->icon('heroicon-m-arrow-top-right-on-square')
-                                                ->url(function ($record) {
-                                                    try {
-                                                        if ($record->file_ktp) {
-                                                            return Storage::disk('google')->url($record->file_ktp);
-                                                        }
-                                                    } catch (\Exception $e) {
-                                                        return null;
-                                                    }
-                                                    return null;
-                                                })
-                                                ->openUrlInNewTab()
-                                                ->visible(fn($action) => $action->getUrl() !== null)
-                                        ),
-
-                                    // D. IJAZAH
-                                    ImageEntry::make('file_ijazah')
-                                        ->label('Ijazah Terakhir')
-                                        ->disk('google')
-                                        ->visibility('private')
-                                        ->height(200)
-                                        ->extraImgAttributes([
-                                            'class' => 'rounded-lg shadow-md border border-gray-200',
-                                            'loading' => 'lazy',
-                                            'referrerpolicy' => 'no-referrer',
-                                        ])
-                                        ->hintAction(
-                                            Action::make('open_ijazah')
-                                                ->icon('heroicon-m-arrow-top-right-on-square')
-                                                ->url(function ($record) {
-                                                    try {
-                                                        if ($record->file_ijazah) {
-                                                            return Storage::disk('google')->url($record->file_ijazah);
-                                                        }
-                                                    } catch (\Exception $e) {
-                                                        return null;
-                                                    }
-                                                    return null;
-                                                })
-                                                ->openUrlInNewTab()
-                                                ->visible(fn($action) => $action->getUrl() !== null)
-                                        ),
-
-                                ])->columns(2), // Tampil 2 kolom (Kiri-Kanan)
-
                         ])->columnSpan(['lg' => 2]),
 
                         // ========================================================
-                        // KOLOM KANAN (SPAN 1): AKUN PENGGUNA
+                        // KOLOM KANAN (SPAN 1): AKUN
                         // ========================================================
                         InfolistGroup::make([
                             InfolistSection::make('Akun Pengguna')
@@ -479,23 +354,11 @@ class UserResource extends Resource
                                         ->color('success'),
 
                                     TextEntry::make('role')
-                                        ->label('Role')
                                         ->badge()
-                                        ->color(fn(string $state): string => match ($state) {
-                                            'superadmin' => 'gray',
-                                            'admin' => 'danger',
-                                            'pendamping' => 'warning',
-                                            'member' => 'success',
-                                            default => 'primary',
-                                        }),
+                                        ->color('warning'), // Asumsi role pendamping
 
                                     TextEntry::make('status')
-                                        ->badge()
-                                        ->color(fn(string $state): string => match ($state) {
-                                            'verified' => 'success',
-                                            'rejected' => 'danger',
-                                            default => 'warning',
-                                        }),
+                                        ->badge(),
 
                                     TextEntry::make('created_at')
                                         ->label('Terdaftar')
@@ -503,7 +366,83 @@ class UserResource extends Resource
                                         ->color('gray'),
                                 ]),
                         ])->columnSpan(['lg' => 1]),
-                    ]),
+
+                    ]), // tutup grid utama
+
+                // ========================================================
+                // BAGIAN BAWAH: DOKUMEN (FULL WIDTH / LEBAR PENUH)
+                // ========================================================
+                // Section ini ditaruh di LUAR Grid agar bisa panjang ke samping
+                InfolistSection::make('Berkas Dokumen Pendamping')
+                    ->icon('heroicon-o-folder-open')
+                    ->visible(fn($record) => $record->role === 'pendamping')
+                    ->schema([
+                        // A. PAS FOTO (Pakai Base64)
+                        ImageEntry::make('file_pas_foto')
+                            ->label('Pas Foto')
+                            ->disk(null) // Matikan disk agar membaca state base64
+                            ->state(fn($record) => self::getBase64Image($record->file_pas_foto))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-cover aspect-square rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_pas_foto')),
+
+                        // B. BUKU REKENING (Pakai Base64)
+                        ImageEntry::make('file_buku_rekening')
+                            ->label('Buku Rekening')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_buku_rekening))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_buku_rekening')),
+
+                        // C. KTP (Pakai Base64)
+                        ImageEntry::make('file_ktp')
+                            ->label('KTP')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_ktp))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_ktp')),
+
+                        // D. IJAZAH (Pakai Base64)
+                        ImageEntry::make('file_ijazah')
+                            ->label('Ijazah Terakhir')
+                            ->disk(null)
+                            ->state(fn($record) => self::getBase64Image($record->file_ijazah))
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
+                            ->hintAction(self::getOpenAction('file_ijazah')),
+                    ])
+                    ->columns([
+                        'default' => 1,
+                        'sm' => 2, // Tampil 2 kolom agar rapi
+                    ])
+                    ->columnSpanFull(),
             ]);
+    }
+
+    // --- PASTIKAN 2 FUNGSI INI ADA DI BAWAH INFOLIST (DALAM CLASS RESOURCE) ---
+
+    protected static function getBase64Image($path)
+    {
+        if (! $path) return null;
+        try {
+            // Pastikan disk 'google' sudah terkonfigurasi di filesystems.php
+            $disk = Storage::disk('google');
+            if ($disk->exists($path)) {
+                $content = $disk->get($path);
+                $mime = $disk->mimeType($path);
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+        return null;
+    }
+
+    protected static function getOpenAction($columnName)
+    {
+        return Action::make('open_' . $columnName)
+            ->icon('heroicon-m-arrow-top-right-on-square')
+            ->tooltip('Buka file asli')
+            ->url(fn($record) => $record->$columnName ? Storage::disk('google')->url($record->$columnName) : null)
+            ->openUrlInNewTab()
+            ->visible(fn($record) => $record->$columnName);
     }
 }
