@@ -173,19 +173,18 @@ class EditProfile extends BaseEditProfile
 								Section::make('Akun External')
 									->icon('heroicon-o-key')
 									->schema([
-										TextInput::make('pass_email_pendamping')
-											->label('Password Email')
-											->password()
-											->revealable()
-											->helperText('Password email utama Anda.')
-											->required(),
+										// TextInput::make('pass_email_pendamping')
+										// 	->label('Password Email')
+										// 	->password()
+										// 	->revealable()
+										// 	->helperText('Password email utama Anda.'),
 
 										TextInput::make('akun_halal')
-											->label('User Akun Halal')
+											->label('Email Akun Halal')
 											->required(),
 
 										TextInput::make('pass_akun_halal')
-											->label('Pass Akun Halal')
+											->label('Password Akun Halal')
 											->password()
 											->revealable()
 											->required(),

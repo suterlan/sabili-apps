@@ -291,7 +291,7 @@ class UserResource extends Resource
     public static function canViewAny(): bool
     {
         $user = Auth::user();
-        return $user->isSuperAdmin() || $user->isAdmin() || $user->isKoordinator();
+        return $user->isSuperAdmin() || $user->isAdmin();
     }
 
     public static function infolist(Infolist $infolist): Infolist
@@ -421,18 +421,57 @@ class UserResource extends Resource
 
     protected static function getBase64Image($path)
     {
+        // 1. Validasi Input
         if (! $path) return null;
+        if (is_array($path)) $path = array_shift($path);
+        if (! is_string($path)) return null;
+
         try {
-            // Pastikan disk 'google' sudah terkonfigurasi di filesystems.php
-            $disk = Storage::disk('google');
+            $disk = \Illuminate\Support\Facades\Storage::disk('google');
+
             if ($disk->exists($path)) {
+                // Ambil konten raw file
                 $content = $disk->get($path);
-                $mime = $disk->mimeType($path);
+
+                // Ambil ekstensi
+                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
+                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
+                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
+                $mime = match ($extension) {
+                    'png' => 'image/png',
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'webp' => 'image/webp',
+                    'gif' => 'image/gif',
+                    default => $disk->mimeType($path) // Fallback ke deteksi driver
+                };
+
+                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
+                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
+                    if (extension_loaded('imagick')) {
+                        try {
+                            $imagick = new \Imagick();
+                            $imagick->readImageBlob($content);
+                            $imagick->setImageFormat('jpeg');
+                            $content = $imagick->getImageBlob();
+                            $mime = 'image/jpeg';
+                            $imagick->clear();
+                            $imagick->destroy();
+                        } catch (\Exception $e) {
+                            // Jika convert gagal, biarkan apa adanya (atau return null)
+                        }
+                    }
+                }
+
+                // Return string Base64 yang valid
                 return 'data:' . $mime . ';base64,' . base64_encode($content);
             }
         } catch (\Exception $e) {
+            // Log error jika perlu: Log::error($e->getMessage());
             return null;
         }
+
         return null;
     }
 

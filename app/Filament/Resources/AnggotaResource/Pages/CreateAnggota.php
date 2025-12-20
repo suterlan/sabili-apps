@@ -6,6 +6,7 @@ use App\Filament\Resources\AnggotaResource;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class CreateAnggota extends CreateRecord
@@ -49,5 +50,23 @@ class CreateAnggota extends CreateRecord
         }
 
         return $data;
+    }
+
+    // =================================================================
+    //Ketika Pendamping membuat User baru, sistem otomatis membuatkan 1 record Pengajuan awal.
+    // =================================================================
+    protected function handleRecordCreation(array $data): Model
+    {
+        // 1. Buat User-nya dulu
+        $user = static::getModel()::create($data);
+
+        // 2. Otomatis buatkan tiket Pengajuan baru
+        \App\Models\Pengajuan::create([
+            'user_id' => $user->id,
+            'pendamping_id' => auth()->id(), // Pendamping yg login
+            'status_verifikasi' => 'Menunggu Verifikasi',
+        ]);
+
+        return $user;
     }
 }

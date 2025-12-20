@@ -3,8 +3,10 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\AnggotaResource\Pages;
+use App\Models\Pengajuan;
 use App\Models\User;
 use Filament\Forms;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -31,8 +33,9 @@ use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Group;
 use Filament\Infolists\Components\Actions\Action;
+use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Storage;
-
+use Illuminate\Support\HtmlString;
 
 class AnggotaResource extends Resource
 {
@@ -41,6 +44,7 @@ class AnggotaResource extends Resource
     protected static ?string $navigationLabel = 'Pelaku Usaha';
     protected static ?string $modelLabel = 'Pelaku Usaha';
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
+    protected static ?string $pluralModelLabel = 'Pelaku Usaha';
 
     public static function form(Form $form): Form
     {
@@ -179,12 +183,38 @@ class AnggotaResource extends Resource
                     ->description('Format: JPG/PNG. Maksimal 8MB per file. Nama file akan otomatis dirapikan.')
                     ->schema([
 
+                        // 1. COMPONENT UNTUK PREVIEW (Menampilkan Gambar Saat Ini)
+                        Placeholder::make('preview_ktp')
+                            ->label('Preview KTP Saat Ini')
+                            ->content(function ($get) {
+                                // Ambil datanya
+                                $filePath = $get('file_ktp');
+
+                                // Panggil fungsi (sekarang fungsi ini sudah pintar menangani array/string)
+                                $base64 = self::getBase64Image($filePath);
+
+                                // Jika ada gambar, tampilkan. Jika null, tampilkan teks.
+                                if ($base64) {
+                                    return new HtmlString('
+                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
+                                            <img src="' . $base64 . '" 
+                                                class="max-h-64 rounded-md shadow-sm object-contain" 
+                                                alt="Preview KTP">
+                                        </div>
+                                    ');
+                                } else {
+                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
+                                }
+                            }),
+
                         // 1. FILE KTP
                         Forms\Components\FileUpload::make('file_ktp')
-                            ->label('Foto KTP Pelaku Usaha')
+                            ->label('Ganti/Upload KTP')
+                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
                             ->disk('google')
-                            ->image()
                             ->visibility('private')
+                            ->image()
+
                             // Direktori: dokumen_anggota_budi/agus
                             ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
                             // Rename: ktp_agus_172812.jpg
@@ -197,11 +227,32 @@ class AnggotaResource extends Resource
                             ->imageResizeTargetWidth('1024')
                             ->maxSize(8192)
                             ->downloadable()
-                            ->required(),
+                            // Wajib diisi HANYA saat Buat Baru. Saat Edit, boleh kosong.
+                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
 
+                        // 2. Preview Foto NIB
+                        Placeholder::make('preview_nib')
+                            ->label('Preview Foto NIB Saat Ini')
+                            ->content(function ($get) {
+                                $filePath = $get('file_foto_nib');
+                                $base64 = self::getBase64Image($filePath);
+
+                                if ($base64) {
+                                    return new HtmlString('
+                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
+                                            <img src="' . $base64 . '" 
+                                                class="max-h-64 rounded-md shadow-sm object-contain" 
+                                                alt="Preview Foto NIB">
+                                        </div>
+                                    ');
+                                } else {
+                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
+                                }
+                            }),
                         // 2. FOTO NIB
                         Forms\Components\FileUpload::make('file_foto_nib')
-                            ->label('Foto Dokumen NIB')
+                            ->label('Ganti/Upload Foto Dokumen NIB')
+                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
                             ->disk('google')
                             ->image()
                             ->visibility('private')
@@ -216,9 +267,29 @@ class AnggotaResource extends Resource
                             ->maxSize(8192)
                             ->downloadable(),
 
+                        // 3. Preview FOTO PRODUK
+                        Placeholder::make('preview_foto_produk')
+                            ->label('Preview Foto Produk Saat Ini')
+                            ->content(function ($get) {
+                                $filePath = $get('file_foto_produk');
+                                $base64 = self::getBase64Image($filePath);
+
+                                if ($base64) {
+                                    return new HtmlString('
+                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
+                                            <img src="' . $base64 . '" 
+                                                class="max-h-64 rounded-md shadow-sm object-contain" 
+                                                alt="Preview Foto Produk">
+                                        </div>
+                                    ');
+                                } else {
+                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
+                                }
+                            }),
                         // 3. FOTO PRODUK
                         Forms\Components\FileUpload::make('file_foto_produk')
-                            ->label('Foto Produk')
+                            ->label('Ganti/Upload Foto Produk')
+                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
                             ->disk('google')
                             ->image()
                             ->visibility('private')
@@ -231,11 +302,31 @@ class AnggotaResource extends Resource
                             ->imageResizeTargetWidth('800')
                             ->maxSize(8192)
                             ->downloadable()
-                            ->required(),
+                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
 
+                        // 4. Preview FOTO TEMPAT USAHA
+                        Placeholder::make('preview_foto_usaha')
+                            ->label('Preview Foto Tempat Usaha Saat Ini')
+                            ->content(function ($get) {
+                                $filePath = $get('file_foto_usaha');
+                                $base64 = self::getBase64Image($filePath);
+
+                                if ($base64) {
+                                    return new HtmlString('
+                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
+                                            <img src="' . $base64 . '" 
+                                                class="max-h-64 rounded-md shadow-sm object-contain" 
+                                                alt="Preview Foto Tempat Usaha">
+                                        </div>
+                                    ');
+                                } else {
+                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
+                                }
+                            }),
                         // 4. FOTO TEMPAT USAHA
                         Forms\Components\FileUpload::make('file_foto_usaha')
-                            ->label('Foto Tempat Usaha (Tampak Depan)')
+                            ->label('Ganti/Upload Foto Tempat Usaha (Tampak Depan)')
+                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
                             ->disk('google')
                             ->image()
                             ->visibility('private')
@@ -248,11 +339,31 @@ class AnggotaResource extends Resource
                             ->imageResizeTargetWidth('1024')
                             ->maxSize(8192)
                             ->downloadable()
-                            ->required(),
+                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
 
+                        // 5. Preview FOTO BERSAMA PENDAMPING
+                        Placeholder::make('preview_foto_bersama')
+                            ->label('Preview Foto Pelaku Usaha dengan Pendamping Saat Ini')
+                            ->content(function ($get) {
+                                $filePath = $get('file_foto_bersama');
+                                $base64 = self::getBase64Image($filePath);
+
+                                if ($base64) {
+                                    return new HtmlString('
+                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
+                                            <img src="' . $base64 . '" 
+                                                class="max-h-64 rounded-md shadow-sm object-contain" 
+                                                alt="Preview Foto Bersama Pendamping">
+                                        </div>
+                                    ');
+                                } else {
+                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
+                                }
+                            }),
                         // 5. FOTO BERSAMA PENDAMPING
                         Forms\Components\FileUpload::make('file_foto_bersama')
-                            ->label('Foto Pelaku Usaha dgn Pendamping')
+                            ->label('Ganti/Upload Foto Pelaku Usaha dgn Pendamping')
+                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
                             ->disk('google')
                             ->image()
                             ->visibility('private')
@@ -265,7 +376,7 @@ class AnggotaResource extends Resource
                             ->imageResizeTargetWidth('1024')
                             ->maxSize(8192)
                             ->downloadable()
-                            ->required(),
+                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
 
                     ])->columns(2),
 
@@ -292,26 +403,49 @@ class AnggotaResource extends Resource
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('phone')
-                    ->label('No HP'),
+                    ->label('No HP')
+                    ->toggleable(isToggledHiddenByDefault: true), // sembunyiin default
 
                 // --- KOLOM DESA (Dikonversi dari Kode ke Nama) ---
-                Tables\Columns\TextColumn::make('desa')
+                Tables\Columns\TextColumn::make('village.name')
                     ->label('Desa / Kel')
-                    ->formatStateUsing(
-                        fn($state) =>
-                        \Laravolt\Indonesia\Models\Village::where('code', $state)->first()?->name ?? $state
-                    )
-                    ->searchable(), // Note: Search ini mencari Kode, bukan Nama (kecuali relasi dibuat)
-
-                // --- KOLOM KECAMATAN (Dikonversi dari Kode ke Nama) ---
-                Tables\Columns\TextColumn::make('kecamatan')
-                    ->label('Kecamatan')
-                    ->formatStateUsing(
-                        fn($state) =>
-                        \Laravolt\Indonesia\Models\District::where('code', $state)->first()?->name ?? $state
-                    )
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable()
                     ->searchable(),
+
+                // --- KOLOM KECAMATAN (Dikonversi dari Kode ke Nama) ---
+                Tables\Columns\TextColumn::make('district.name')
+                    ->label('Kecamatan')
+                    ->sortable()
+                    ->searchable(),
+
+                // Ini agar Pendamping tahu apakah orang ini sudah diajukan atau belum
+                Tables\Columns\TextColumn::make('latestPengajuan.status_verifikasi')
+                    ->label('Status')
+                    ->badge()
+                    ->placeholder('Belum Diajukan') // Jika null
+                    ->color(fn($state) => match ($state) {
+                        // Abu-abu
+                        Pengajuan::STATUS_MENUNGGU => 'gray',
+
+                        // Merah (Error/Masalah)
+                        Pengajuan::STATUS_NIK_TERDAFTAR,
+                        Pengajuan::STATUS_NIK_INVALID => 'danger',
+
+                        // Kuning (Butuh Tindakan User)
+                        Pengajuan::STATUS_UPLOAD_NIB,
+                        Pengajuan::STATUS_UPLOAD_KK => 'warning',
+
+                        // Biru (Proses Admin)
+                        Pengajuan::STATUS_DIPROSES,
+                        Pengajuan::STATUS_INVOICE => 'info',
+
+                        // Hijau (Berhasil)
+                        Pengajuan::STATUS_SERTIFIKAT,
+                        Pengajuan::STATUS_SELESAI => 'success',
+
+                        default => 'primary',
+                    }),
 
                 // KOLOM BARU: PENDAMPING
                 // Menampilkan nama pendamping dari relasi
@@ -321,11 +455,25 @@ class AnggotaResource extends Resource
                     ->color('warning')
                     ->sortable()
                     ->searchable()
-                    // Kolom ini HANYA MUNCUL untuk Superadmin & Admin
+                    // Kolom ini HANYA MUNCUL untuk Superadmin, Admin & Koordinator
                     // Pendamping tidak perlu lihat (karena pasti namanya sendiri)
-                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
+                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin() || Auth::user()->isKoordinator()),
             ])
             ->filters([
+                // --- 1. FILTER STATUS (PENTING AGAR WIDGET BISA DIKLIK) ---
+                \Filament\Tables\Filters\SelectFilter::make('status_verifikasi')
+                    ->label('Status Verifikasi')
+                    ->multiple() // Agar bisa filter banyak status sekaligus (misal: semua revisi)
+                    ->options(Pengajuan::getStatusVerifikasiOptions())
+                    ->query(function (Builder $query, array $data) {
+                        // Logic khusus karena status ada di tabel relasi 'pengajuans', bukan di 'users'
+                        if (!empty($data['values'])) {
+                            $query->whereHas('latestPengajuan', function ($q) use ($data) {
+                                $q->whereIn('status_verifikasi', $data['values']);
+                            });
+                        }
+                    }),
+
                 // Filter Opsional: Agar Admin bisa memfilter list berdasarkan Pendamping
                 Tables\Filters\SelectFilter::make('pendamping_id')
                     ->label('Filter per Pendamping')
@@ -337,19 +485,83 @@ class AnggotaResource extends Resource
                     ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
             ])
             ->actions([
-                // 1. Tombol View (Detail)
+                // Tombol View (Detail)
                 Tables\Actions\ViewAction::make()
-                    ->label('Detail') // Opsional ganti label
+                    ->label('') // Opsional ganti label
                     ->color('info'),  // Opsional ganti warna
 
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()->label('')
+                    ->hidden(fn() => auth()->user()->isKoordinator()),
                 // Superadmin/Admin boleh delete atau tidak? 
                 // Jika tidak boleh delete, tambahkan ->visible(...) di sini juga.
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()->label('')
+                    ->hidden(fn() => auth()->user()->isKoordinator()),
+
+                // --- ACTION AJUKAN VERIFIKASI ---
+                Tables\Actions\Action::make('ajukan_verifikasi')
+                    ->label('Ajukan')
+                    ->icon('heroicon-m-paper-airplane')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Ajukan Verifikasi?')
+                    ->modalDescription('Pastikan data pelaku usaha sudah diperbaiki dan lengkap sebelum diajukan ulang.')
+                    ->modalSubmitActionLabel('Ya, Ajukan')
+
+                    // LOGIC VISIBILITY:
+                    // Tombol ini HANYA muncul jika:
+                    // 1. Belum pernah diajukan sama sekali (latestPengajuan == null)
+                    // 2. ATAU Pengajuan terakhir sudah selesai/ditolak (Boleh ajukan ulang)
+                    // 3. HANYA untuk Pendamping yang bersangkutan
+                    ->visible(function (User $record) {
+                        $currentUser = Auth::user();
+                        // 1. Syarat No. 3 = Hanya pendamping
+                        if ($currentUser->role !== 'pendamping') {
+                            return false;
+                        }
+
+                        //ambil status pengajuan terakhir
+                        $status = $record->latestPengajuan?->status_verifikasi;
+
+                        // Syarat 1: Belum pernah diajukan (Status Null)
+                        if (is_null($status)) {
+                            return true;
+                        }
+
+                        // Syarat 2: Boleh ajukan ulang HANYA JIKA statusnya 'Selesai' atau 'Invalid' (Ditolak)
+                        // Status lain seperti 'Menunggu', 'Diproses', 'Upload NIB' tidak boleh diajukan ulang (harus diselesaikan dulu)
+                        return in_array($status, [
+                            Pengajuan::STATUS_SELESAI,          // Boleh ajukan lagi kalau sudah selesai (misal perpanjangan)
+                            Pengajuan::STATUS_NIK_INVALID,      // Gagal, perlu revisi
+                            Pengajuan::STATUS_NIK_TERDAFTAR,    // Gagal
+                            Pengajuan::STATUS_UPLOAD_NIB,       // Revisi dokumen
+                            Pengajuan::STATUS_UPLOAD_KK,        // Revisi dokumen
+                        ]);
+                        // Catatan: Status 'Menunggu', 'Diproses', 'Invoice' TIDAK ADA di sini,
+                        // jadi tombol akan hilang (hidden) agar tidak double submit.
+                    })
+
+                    // LOGIC ACTION:
+                    ->action(function (User $record) {
+                        // Kita buat PENGAJUAN BARU (Record baru)
+                        // Agar tercatat di history dan masuk ke antrian paling belakang (atau sesuaikan kebijakan)
+                        Pengajuan::create([
+                            'user_id' => $record->id,
+                            'pendamping_id' => auth()->id(),
+                            'status_verifikasi' => Pengajuan::STATUS_MENUNGGU,
+                            'created_at' => now(),
+                        ]);
+
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('Berhasil Diajukan')
+                            ->body('Data telah masuk kembali ke antrian verifikasi Admin.')
+                            ->send();
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->hidden(fn() => auth()->user()->isKoordinator()),
 
                     // TAMBAHKAN INI: Tombol Export Excel
                     ExportBulkAction::make()
@@ -399,6 +611,7 @@ class AnggotaResource extends Resource
         // 1. Superadmin
         // 2. Admin
         // 3. Pendamping
+        // 4. Koordinator
         // (Member biasa TIDAK BOLEH akses, meskipun mereka tidak bisa login panel, 
         //  ini adalah lapisan keamanan ganda).
 
@@ -578,17 +791,57 @@ class AnggotaResource extends Resource
 
     protected static function getBase64Image($path)
     {
+        // 1. Validasi Input
         if (! $path) return null;
+        if (is_array($path)) $path = array_shift($path);
+        if (! is_string($path)) return null;
+
         try {
-            $disk = Storage::disk('google');
+            $disk = \Illuminate\Support\Facades\Storage::disk('google');
+
             if ($disk->exists($path)) {
+                // Ambil konten raw file
                 $content = $disk->get($path);
-                $mime = $disk->mimeType($path);
+
+                // Ambil ekstensi
+                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
+                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
+                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
+                $mime = match ($extension) {
+                    'png' => 'image/png',
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'webp' => 'image/webp',
+                    'gif' => 'image/gif',
+                    default => $disk->mimeType($path) // Fallback ke deteksi driver
+                };
+
+                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
+                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
+                    if (extension_loaded('imagick')) {
+                        try {
+                            $imagick = new \Imagick();
+                            $imagick->readImageBlob($content);
+                            $imagick->setImageFormat('jpeg');
+                            $content = $imagick->getImageBlob();
+                            $mime = 'image/jpeg';
+                            $imagick->clear();
+                            $imagick->destroy();
+                        } catch (\Exception $e) {
+                            // Jika convert gagal, biarkan apa adanya (atau return null)
+                        }
+                    }
+                }
+
+                // Return string Base64 yang valid
                 return 'data:' . $mime . ';base64,' . base64_encode($content);
             }
         } catch (\Exception $e) {
+            // Log error jika perlu: Log::error($e->getMessage());
             return null;
         }
+
         return null;
     }
 

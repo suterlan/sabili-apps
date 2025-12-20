@@ -11,11 +11,17 @@ use Illuminate\Notifications\Notifiable;
 use Filament\Forms;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
 use Laravolt\Indonesia\Models\City;
 use Laravolt\Indonesia\Models\District;
 use Laravolt\Indonesia\Models\Province;
 use Laravolt\Indonesia\Models\Village;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile; // Pastikan import ini ada
+use Filament\Forms\Components\Group;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\FileUpload;
 
 class User extends Authenticatable implements FilamentUser
 {
@@ -162,6 +168,29 @@ class User extends Authenticatable implements FilamentUser
         return $this->belongsTo(Village::class, 'desa', 'code');
     }
 
+    // User bisa punya banyak pengajuan (Histori)
+    public function pengajuans()
+    {
+        return $this->hasMany(Pengajuan::class);
+    }
+
+    // Helper untuk mengambil pengajuan terbaru (Current active application)
+    public function latestPengajuan()
+    {
+        return $this->hasOne(Pengajuan::class)->latestOfMany();
+    }
+
+    // Relasi untuk mengambil pelaku usaha yang didampingi oleh pendamping ini
+    public function members()
+    {
+        // Asumsi: Pelaku usaha punya kolom 'pendamping_id' di tabel users
+        // (Jika Anda pakai struktur relasi yang berbeda, sesuaikan di sini)
+        // Jika tidak ada kolom pendamping_id di tabel users, 
+        // Anda bisa hitung lewat tabel Pengajuan:
+
+        return $this->hasMany(Pengajuan::class, 'pendamping_id');
+    }
+
     /**
      * Cek apakah profil Pendamping sudah lengkap.
      */
@@ -172,7 +201,6 @@ class User extends Authenticatable implements FilamentUser
             'phone',
             'address',
             'alamat_domisili',
-            'pass_email_pendamping',
             'akun_halal',
             'pass_akun_halal',
             'provinsi',
@@ -210,117 +238,260 @@ class User extends Authenticatable implements FilamentUser
         return true;
     }
 
+    /**
+     * Mendefinisikan schema form untuk upload dokumen pendamping.
+     */
     public static function getDokumenPendampingFormSchema()
     {
         return [
-            Forms\Components\Section::make('Berkas Dokumen Pendamping')
+            Section::make('Berkas Dokumen Pendamping')
                 ->description('Size maximal 10MB per file.')
                 ->icon('heroicon-o-folder-open')
                 ->collapsible()
                 ->collapsed()
                 ->schema([
-                    Forms\Components\Group::make([
-                        // 1. PAS FOTO
-                        Forms\Components\FileUpload::make('file_pas_foto')
-                            ->label('Pas Foto')
-                            ->disk('google')
-                            ->visibility('private')
-                            // Logika Direktori: dokumen_pendamping_budi_1
-                            ->directory(function ($get, $record) {
-                                $u = $record ?? Auth::user();
-                                $name = $u->name ?? $get('name') ?? 'user';
-                                $id = $u->id ?? 'new';
-                                return 'dokumen_pendamping_' . Str::slug($name) . '_' . $id;
-                            })
-                            // Logika Rename File: pas_foto_1709823.jpg
-                            ->getUploadedFileNameForStorageUsing(
-                                fn(TemporaryUploadedFile $file): string =>
-                                'pas_foto_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
-                            )
-                            ->image()
-                            ->avatar()
-                            ->imageResizeMode('cover')
-                            ->imageCropAspectRatio('1:1')
-                            ->imageResizeTargetWidth('500')
-                            ->maxSize(10240)
-                            ->downloadable()
-                            ->openable()
-                            ->required(),
 
-                        // 2. BUKU REKENING
-                        Forms\Components\FileUpload::make('file_buku_rekening')
-                            ->label('Foto Buku Rekening')
-                            ->disk('google')
-                            ->visibility('private')
-                            ->directory(function ($get, $record) {
-                                $u = $record ?? Auth::user();
-                                $name = $u->name ?? $get('name') ?? 'user';
-                                $id = $u->id ?? 'new';
-                                return 'dokumen_pendamping_' . Str::slug($name) . '_' . $id;
-                            })
-                            // Logika Rename File: rekening_1709823.jpg
-                            ->getUploadedFileNameForStorageUsing(
-                                fn(TemporaryUploadedFile $file): string =>
-                                'rekening_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
-                            )
-                            ->image()
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(10240)
-                            ->downloadable()
-                            ->openable()
-                            ->required(),
+                    // --- BARIS 1: PAS FOTO & BUKU REKENING ---
+                    Group::make([
+
+                        // KOLOM KIRI: PAS FOTO
+                        Group::make([
+                            // 1a. Preview Pas Foto
+                            Placeholder::make('preview_pas_foto')
+                                ->label('Pas Foto Saat Ini')
+                                ->content(fn($get) => self::renderPreview($get('file_pas_foto'), true)),
+
+                            // 1b. Upload Pas Foto
+                            FileUpload::make('file_pas_foto')
+                                ->label('Ganti/Upload Pas Foto')
+                                ->helperText('Kosongkan jika tidak ubah.')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->image()
+                                ->avatar() // Khusus Pas Foto
+                                ->imageResizeMode('cover')
+                                ->imageCropAspectRatio('1:1')
+                                ->imageResizeTargetWidth('500')
+                                ->maxSize(10240)
+                                ->downloadable()
+
+                                // TRIK ANTI-LOADING
+                                ->dehydrated(fn($state) => filled($state))
+                                ->required(fn($record) => $record === null) // Wajib cuma saat Create
+
+                                // DIRECTORY & RENAME
+                                ->directory(fn($get, $record) => self::generateDirectory($get, $record))
+                                ->getUploadedFileNameForStorageUsing(
+                                    fn(TemporaryUploadedFile $file) =>
+                                    'pas_foto_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
+                                ),
+                        ]),
+
+                        // KOLOM KANAN: BUKU REKENING
+                        Group::make([
+                            // 2a. Preview Rekening
+                            Placeholder::make('preview_buku_rekening')
+                                ->label('Rekening Saat Ini')
+                                ->content(fn($get) => self::renderPreview($get('file_buku_rekening'))),
+
+                            // 2b. Upload Rekening
+                            FileUpload::make('file_buku_rekening')
+                                ->label('Ganti/Upload Rekening')
+                                ->helperText('Kosongkan jika tidak ubah.')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->image()
+                                ->imageResizeTargetWidth('1024')
+                                ->maxSize(10240)
+                                ->downloadable()
+
+                                // TRIK ANTI-LOADING
+                                ->dehydrated(fn($state) => filled($state))
+                                ->required(fn($record) => $record === null)
+
+                                // DIRECTORY & RENAME
+                                ->directory(fn($get, $record) => self::generateDirectory($get, $record))
+                                ->getUploadedFileNameForStorageUsing(
+                                    fn(TemporaryUploadedFile $file) =>
+                                    'rekening_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
+                                ),
+                        ]),
+
+                    ])->columns(2), // Split jadi 2 kolom
+
+
+                    // --- BARIS 2: KTP & IJAZAH ---
+                    Group::make([
+
+                        // KOLOM KIRI: KTP
+                        Group::make([
+                            // 3a. Preview KTP
+                            Placeholder::make('preview_ktp')
+                                ->label('KTP Saat Ini')
+                                ->content(fn($get) => self::renderPreview($get('file_ktp'))),
+
+                            // 3b. Upload KTP
+                            FileUpload::make('file_ktp')
+                                ->label('Ganti/Upload KTP')
+                                ->helperText('Kosongkan jika tidak ubah.')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->image()
+                                ->imageResizeMode('cover')
+                                ->imageCropAspectRatio('16:9')
+                                ->imageResizeTargetWidth('1024')
+                                ->maxSize(10240)
+                                ->downloadable()
+
+                                // TRIK ANTI-LOADING
+                                ->dehydrated(fn($state) => filled($state))
+                                ->required(fn($record) => $record === null)
+
+                                // DIRECTORY & RENAME
+                                ->directory(fn($get, $record) => self::generateDirectory($get, $record))
+                                ->getUploadedFileNameForStorageUsing(
+                                    fn(TemporaryUploadedFile $file) =>
+                                    'ktp_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
+                                ),
+                        ]),
+
+                        // KOLOM KANAN: IJAZAH
+                        Group::make([
+                            // 4a. Preview Ijazah
+                            Placeholder::make('preview_ijazah')
+                                ->label('Ijazah Saat Ini')
+                                ->content(fn($get) => self::renderPreview($get('file_ijazah'))),
+
+                            // 4b. Upload Ijazah
+                            FileUpload::make('file_ijazah')
+                                ->label('Ganti/Upload Ijazah')
+                                ->helperText('Kosongkan jika tidak ubah.')
+                                ->disk('google')
+                                ->visibility('private')
+                                ->image()
+                                ->imageResizeTargetWidth('1024')
+                                ->maxSize(10240)
+                                ->downloadable()
+
+                                // TRIK ANTI-LOADING
+                                ->dehydrated(fn($state) => filled($state))
+                                ->required(fn($record) => $record === null)
+
+                                // DIRECTORY & RENAME
+                                ->directory(fn($get, $record) => self::generateDirectory($get, $record))
+                                ->getUploadedFileNameForStorageUsing(
+                                    fn(TemporaryUploadedFile $file) =>
+                                    'ijazah_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
+                                ),
+                        ]),
+
                     ])->columns(2),
 
-                    Forms\Components\Group::make([
-                        // 3. KTP
-                        Forms\Components\FileUpload::make('file_ktp')
-                            ->label('Foto KTP')
-                            ->disk('google')
-                            ->visibility('private')
-                            ->directory(function ($get, $record) {
-                                $u = $record ?? Auth::user();
-                                $name = $u->name ?? $get('name') ?? 'user';
-                                $id = $u->id ?? 'new';
-                                return 'dokumen_pendamping_' . Str::slug($name) . '_' . $id;
-                            })
-                            // Logika Rename File: ktp_1709823.jpg
-                            ->getUploadedFileNameForStorageUsing(
-                                fn(TemporaryUploadedFile $file): string =>
-                                'ktp_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
-                            )
-                            ->image()
-                            ->imageResizeMode('cover')
-                            ->imageCropAspectRatio('16:9')
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(10240)
-                            ->downloadable()
-                            ->openable()
-                            ->required(),
-
-                        // 4. IJAZAH
-                        Forms\Components\FileUpload::make('file_ijazah')
-                            ->label('Foto Ijazah Terakhir')
-                            ->disk('google')
-                            ->visibility('private')
-                            ->directory(function ($get, $record) {
-                                $u = $record ?? Auth::user();
-                                $name = $u->name ?? $get('name') ?? 'user';
-                                $id = $u->id ?? 'new';
-                                return 'dokumen_pendamping_' . Str::slug($name) . '_' . $id;
-                            })
-                            // Logika Rename File: ijazah_1709823.jpg
-                            ->getUploadedFileNameForStorageUsing(
-                                fn(TemporaryUploadedFile $file): string =>
-                                'ijazah_' . now()->timestamp . '.' . $file->getClientOriginalExtension()
-                            )
-                            ->image()
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(10240)
-                            ->downloadable()
-                            ->openable()
-                            ->required(),
-                    ])->columns(2),
                 ]),
         ];
+    }
+
+    /**
+     * Helper agar tidak perlu menulis ulang logika direktori 4 kali
+     */
+    protected static function generateDirectory($get, $record)
+    {
+        $u = $record ?? Auth::user();
+        // Fallback logic yang aman
+        $name = $u->name ?? $get('name') ?? 'user';
+        $id = $u->id ?? 'new';
+
+        return 'dokumen_pendamping_' . Str::slug($name) . '_' . $id;
+    }
+
+    /**
+     * Helper untuk merender HTML Preview (mengurangi duplikasi kode)
+     */
+    protected static function renderPreview($filePath, $isAvatar = false)
+    {
+        $base64 = self::getBase64Image($filePath);
+
+        if ($base64) {
+            // STYLE 1: MODE AVATAR (BULAT)
+            if ($isAvatar) {
+                return new HtmlString('
+                <div class="flex justify-center w-full mb-2">
+                    <div class="h-32 w-32 rounded-full overflow-hidden border-2 border-gray-300 shadow-sm ring-2 ring-gray-100">
+                        <img src="' . $base64 . '" 
+                             class="h-full w-full object-cover" 
+                             alt="Avatar Preview">
+                    </div>
+                </div>
+            ');
+            }
+
+            // STYLE 2: MODE DOCUMENT (KOTAK)
+            return new HtmlString('
+            <div class="w-full flex justify-center p-2 bg-gray-50 rounded-lg border border-gray-200">
+                <img src="' . $base64 . '" 
+                     class="max-h-48 rounded shadow-sm object-contain" 
+                     alt="Document Preview">
+            </div>
+        ');
+        }
+
+        // Tampilan jika kosong
+        return new HtmlString('<div class="text-xs text-gray-400 italic text-center p-2">Belum ada file.</div>');
+    }
+
+    protected static function getBase64Image($path)
+    {
+        // 1. Validasi Input
+        if (! $path) return null;
+        if (is_array($path)) $path = array_shift($path);
+        if (! is_string($path)) return null;
+
+        try {
+            $disk = \Illuminate\Support\Facades\Storage::disk('google');
+
+            if ($disk->exists($path)) {
+                // Ambil konten raw file
+                $content = $disk->get($path);
+
+                // Ambil ekstensi
+                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
+                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
+                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
+                $mime = match ($extension) {
+                    'png' => 'image/png',
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'webp' => 'image/webp',
+                    'gif' => 'image/gif',
+                    default => $disk->mimeType($path) // Fallback ke deteksi driver
+                };
+
+                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
+                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
+                    if (extension_loaded('imagick')) {
+                        try {
+                            $imagick = new \Imagick();
+                            $imagick->readImageBlob($content);
+                            $imagick->setImageFormat('jpeg');
+                            $content = $imagick->getImageBlob();
+                            $mime = 'image/jpeg';
+                            $imagick->clear();
+                            $imagick->destroy();
+                        } catch (\Exception $e) {
+                            // Jika convert gagal, biarkan apa adanya (atau return null)
+                        }
+                    }
+                }
+
+                // Return string Base64 yang valid
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+        } catch (\Exception $e) {
+            // Log error jika perlu: Log::error($e->getMessage());
+            return null;
+        }
+
+        return null;
     }
 }

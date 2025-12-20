@@ -43,7 +43,7 @@ class MemberWelcome extends BaseWidget
         };
 
         $description = match ($status) {
-            'verified' => 'Akun Aktif. Anda dapat menginput anggota.',
+            'verified' => 'Akun anda sudah aktif. Pastikan anda melengkapi profil agar bisa menambah pelaku usaha.',
             'rejected' => 'Akun Ditolak. Silakan hubungi Admin.',
             default => 'Menunggu persetujuan Admin.',
         };
