@@ -511,11 +511,12 @@ class AnggotaResource extends Resource
                     // Tombol ini HANYA muncul jika:
                     // 1. Belum pernah diajukan sama sekali (latestPengajuan == null)
                     // 2. ATAU Pengajuan terakhir sudah selesai/ditolak (Boleh ajukan ulang)
-                    // 3. HANYA untuk Pendamping yang bersangkutan
+                    // 3. HANYA untuk Pendamping yang bersangkutan dan superadmin/admin TIDAK BISA pakai tombol ini
                     ->visible(function (User $record) {
                         $currentUser = Auth::user();
-                        // 1. Syarat No. 3 = Hanya pendamping
-                        if ($currentUser->role !== 'pendamping') {
+
+                        // Sarat 3: Jika user BUKAN salah satu dari keduanya, sembunyikan tombol
+                        if (! ($currentUser->isPendamping() || $currentUser->isSuperAdmin())) {
                             return false;
                         }
 
