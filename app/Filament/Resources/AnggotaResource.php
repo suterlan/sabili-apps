@@ -547,9 +547,17 @@ class AnggotaResource extends Resource
                     ->action(function (User $record) {
                         // Kita buat PENGAJUAN BARU (Record baru)
                         // Agar tercatat di history dan masuk ke antrian paling belakang (atau sesuaikan kebijakan)
+
+                        // Tentukan siapa pendampingnya
+                        // Jika user login adalah Super Admin, gunakan pendamping asli user tersebut
+                        // Jika bukan (berarti pendamping itu sendiri), gunakan ID yang login
+                        $pendampingId = auth()->user()->isSuperAdmin()
+                            ? $record->pendamping_id
+                            : auth()->id();
+
                         Pengajuan::create([
                             'user_id' => $record->id,
-                            'pendamping_id' => auth()->id(),
+                            'pendamping_id' => $pendampingId,
                             'status_verifikasi' => Pengajuan::STATUS_MENUNGGU,
                             'created_at' => now(),
                         ]);

@@ -15,12 +15,20 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Filament\Infolists\Components\Group as InfolistGroup;
+use Filament\Infolists\Components\Section as InfolistSection;
+use Filament\Infolists\Components\Grid as InfolistGrid;
+use Filament\Infolists\Components\Actions as InfolistActions;
+use Filament\Infolists\Components\Actions\Action;
+use Filament\Infolists\Components\ImageEntry;
+use Illuminate\Support\Facades\Storage;
 
 class PengajuanResource extends Resource
 {
@@ -106,98 +114,16 @@ class PengajuanResource extends Resource
                             ->send();
                     }),
 
-                // Action Detail 
-                Tables\Actions\Action::make('view_detail')
+                // Action Detail pada Tabel
+                \Filament\Tables\Actions\ViewAction::make()
                     ->label('Detail & Foto')
-                    ->icon('heroicon-m-eye')
                     ->color('info')
-                    ->modalWidth('2xl')
-                    ->slideOver()
-                    ->modalSubmitAction(false) // Hilangkan tombol Submit karena hanya view
-                    ->modalCancelActionLabel('Tutup')
-                    ->form([
-                        // --- BAGIAN 1: TAMPILAN DATA USER (READ ONLY) ---
-                        Section::make('Identitas Pelaku Usaha')
-                            ->columns(2)
-                            ->schema([
-                                Placeholder::make('nama')
-                                    ->label('Nama Lengkap')
-                                    ->content(fn($record) => $record->user->name)
-                                    ->extraAttributes(['class' => 'font-bold']), // CSS Bold
 
-                                Placeholder::make('nik')
-                                    ->label('NIK')
-                                    ->content(fn($record) => $record->user->nik),
-
-                                Placeholder::make('tgl_lahir')
-                                    ->label('Tanggal Lahir')
-                                    ->content(fn($record) => $record->user->tanggal_lahir
-                                        ? $record->user->tanggal_lahir->format('d-m-Y')
-                                        : '-'),
-
-                                Placeholder::make('hp')
-                                    ->label('No. Telepon/WA')
-                                    ->content(fn($record) => $record->user->phone),
-
-                                Placeholder::make('district.name')
-                                    ->label('Kecamatan')
-                                    ->content(fn($record) => $record->user->district->name),
-
-                                Placeholder::make('merk')
-                                    ->label('Merk Dagang')
-                                    ->content(fn($record) => $record->user->merk_dagang)
-                                    ->extraAttributes(['class' => 'text-primary-600 font-bold']),
-
-                                Placeholder::make('alamat')
-                                    ->label('Alamat Lengkap')
-                                    ->content(fn($record) => $record->user->address . ', Kec. ' . $record->user->district->name)
-                                    ->columnSpanFull(),
-                            ]),
-
-                        // --- BAGIAN 2: GAMBAR (MENGGUNAKAN HTML STRING) ---
-                        Section::make('Dokumentasi Foto')
-                            ->description('Preview foto dokumentasi usaha.')
-                            ->schema([
-                                // Gunakan Grid 1 atau 2 untuk slideover
-                                Grid::make(1)->schema([
-                                    // 1. FOTO PRODUK
-                                    Placeholder::make('img_produk')
-                                        ->label('1. Foto Produk')
-                                        ->content(fn($record) => self::generatePhotoCard(
-                                            self::getBase64Image($record->user->file_foto_produk), // Pastikan helper getBase64Image Anda mengembalikan full string lengkap dengan header
-                                            'Foto Produk',
-                                            'Produk-' . Str::slug($record->user->name)
-                                        )),
-
-                                    // 2. FOTO BERSAMA
-                                    Placeholder::make('img_bersama')
-                                        ->label('2. Foto Bersama')
-                                        ->content(fn($record) => self::generatePhotoCard(
-                                            self::getBase64Image($record->user->file_foto_bersama),
-                                            'Foto Bersama',
-                                            'Bersama-' . Str::slug($record->user->name)
-                                        )),
-
-                                    // 3. FOTO TEMPAT USAHA
-                                    Placeholder::make('img_usaha')
-                                        ->label('3. Foto Tempat Usaha')
-                                        ->content(fn($record) => self::generatePhotoCard(
-                                            self::getBase64Image($record->user->file_foto_usaha),
-                                            'Foto Usaha',
-                                            'Usaha-' . Str::slug($record->user->name)
-                                        )),
-
-                                    // 4. FOTO KTP
-                                    Placeholder::make('img_ktp')
-                                        ->label('4. Foto KTP')
-                                        ->content(fn($record) => self::generatePhotoCard(
-                                            self::getBase64Image($record->user->file_ktp),
-                                            'Foto KTP',
-                                            'KTP-' . Str::slug($record->user->name)
-                                        )),
-                                ]),
-                            ]),
-                    ]),
+                    ->visible(function (Pengajuan $record) {
+                        // Syarat 1: User login adalah verifikatornya
+                        $isMyTask = auth()->id() === $record->verificator_id;
+                        return $isMyTask;
+                    }),
 
                 // LOGIC UPDATE STATUS
                 Tables\Actions\Action::make('update_status')
@@ -287,118 +213,220 @@ class PengajuanResource extends Resource
         ];
     }
 
-    // Helper untuk convert gambar ke Base64
-    protected static function getBase64Image($path)
+    public static function infolist(Infolist $infolist): Infolist
     {
-        // 1. Validasi Input
-        if (! $path) return null;
-        if (is_array($path)) $path = array_shift($path);
-        if (! is_string($path)) return null;
+        return $infolist
+            ->schema([
 
-        try {
-            $disk = \Illuminate\Support\Facades\Storage::disk('google');
+                // =========================================================
+                // BAGIAN 1: DATA TEKS LENGKAP
+                // =========================================================
+                \Filament\Infolists\Components\Group::make([
 
-            if ($disk->exists($path)) {
-                // Ambil konten raw file
-                $content = $disk->get($path);
+                    // KIRI: DATA PRIBADI
+                    \Filament\Infolists\Components\Section::make('Data Pribadi')
+                        ->icon('heroicon-o-user')
+                        ->schema([
+                            \Filament\Infolists\Components\TextEntry::make('user.name')
+                                ->label('Nama Lengkap')
+                                ->weight('bold')
+                                ->size(\Filament\Infolists\Components\TextEntry\TextEntrySize::Large),
 
-                // Ambil ekstensi
-                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                            \Filament\Infolists\Components\TextEntry::make('user.nik')
+                                ->label('NIK')
+                                ->copyable()
+                                ->icon('heroicon-m-identification'),
 
-                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
-                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
-                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
-                $mime = match ($extension) {
-                    'png' => 'image/png',
-                    'jpg', 'jpeg' => 'image/jpeg',
-                    'webp' => 'image/webp',
-                    'gif' => 'image/gif',
-                    default => $disk->mimeType($path) // Fallback ke deteksi driver
-                };
+                            \Filament\Infolists\Components\TextEntry::make('user.tanggal_lahir')
+                                ->label('Tanggal Lahir')
+                                ->date('d F Y'),
 
-                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
-                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
-                    if (extension_loaded('imagick')) {
-                        try {
-                            $imagick = new \Imagick();
-                            $imagick->readImageBlob($content);
-                            $imagick->setImageFormat('jpeg');
-                            $content = $imagick->getImageBlob();
-                            $mime = 'image/jpeg';
-                            $imagick->clear();
-                            $imagick->destroy();
-                        } catch (\Exception $e) {
-                            // Jika convert gagal, biarkan apa adanya (atau return null)
-                        }
-                    }
-                }
+                            \Filament\Infolists\Components\TextEntry::make('user.phone')
+                                ->label('No. WhatsApp')
+                                ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
+                                ->color('success')
+                                ->icon('heroicon-m-phone'),
+                        ])->columnSpan(1),
 
-                // Return string Base64 yang valid
-                return 'data:' . $mime . ';base64,' . base64_encode($content);
-            }
-        } catch (\Exception $e) {
-            // Log error jika perlu: Log::error($e->getMessage());
-            return null;
-        }
+                    // KANAN: ALAMAT
+                    \Filament\Infolists\Components\Section::make('Alamat & Lokasi')
+                        ->icon('heroicon-o-map-pin')
+                        ->schema([
+                            \Filament\Infolists\Components\TextEntry::make('user.address')
+                                ->label('Alamat')
+                                ->columnSpanFull(),
+                            \Filament\Infolists\Components\TextEntry::make('user.province.name')->label('Provinsi'),
+                            \Filament\Infolists\Components\TextEntry::make('user.city.name')->label('Kab/Kota'),
+                            \Filament\Infolists\Components\TextEntry::make('user.district.name')->label('Kecamatan'),
+                            \Filament\Infolists\Components\TextEntry::make('user.village.name')->label('Desa/Kel'),
+                        ])->columnSpan(1),
 
-        return null;
-    }
+                    // BAWAH: LEGALITAS
+                    \Filament\Infolists\Components\Section::make('Legalitas & Usaha')
+                        ->icon('heroicon-o-briefcase')
+                        ->schema([
+                            \Filament\Infolists\Components\TextEntry::make('user.merk_dagang')
+                                ->label('Merk Dagang')
+                                ->badge()
+                                ->color('info'),
 
-    private static function generatePhotoCard(string $base64Data, string $label, string $filenamePrefix): HtmlString
-    {
-        // 1. Deteksi MIME Type dari string Base64
-        // Format standar: "data:image/png;base64,....."
-        $mimeType = 'image/jpeg'; // Default fallback
-        $extension = 'jpg';      // Default fallback
+                            \Filament\Infolists\Components\TextEntry::make('user.nomor_nib')
+                                ->label('Nomor NIB')
+                                ->copyable(),
 
-        if (preg_match('/^data:(\w+\/[\w-]+);base64,/', $base64Data, $matches)) {
-            $mimeType = $matches[1]; // contoh: image/png
+                            \Filament\Infolists\Components\TextEntry::make('user.mitra_halal')
+                                ->label('Mitra Halal')
+                                ->badge()
+                                ->color(fn(string $state): string => match ($state) {
+                                    'YA' => 'success',
+                                    default => 'gray',
+                                }),
 
-            // Mapping ekstensi manual agar akurat
-            $extensions = [
-                'image/jpeg' => 'jpg',
-                'image/jpg'  => 'jpg',
-                'image/png'  => 'png',
-                'image/webp' => 'webp',
-                'image/gif'  => 'gif',
-                'image/heic' => 'heic', // Browser tidak bisa render ini, tapi download aman
-                'application/pdf' => 'pdf',
-            ];
+                            \Filament\Infolists\Components\TextEntry::make('user.pendamping.name')
+                                ->label('Pendamping')
+                                ->placeholder('-')
+                                ->icon('heroicon-m-user-group'),
+                        ])
+                        ->columns(4)
+                        ->columnSpanFull(),
 
-            $extension = $extensions[$mimeType] ?? 'jpg';
-        }
+                ])
+                    ->columns(2)
+                    ->columnSpanFull(),
 
-        // 2. Logic Tampilan: Jika HEIC, tampilkan icon placeholder (karena browser gagal render)
-        // Jika format biasa (jpg/png), tampilkan gambarnya.
-        $isPreviewable = in_array($extension, ['jpg', 'png', 'webp', 'gif']);
+                // =========================================================
+                // BAGIAN 2: DOKUMEN FOTO (CARD STYLE & DOWNLOAD FIX)
+                // =========================================================
+                \Filament\Infolists\Components\Section::make('Dokumentasi Foto')
+                    ->description('Preview foto dokumentasi usaha.')
+                    ->schema([
+                        \Filament\Infolists\Components\Grid::make([
+                            'default' => 1,
+                            'md' => 2,
+                        ])->schema([
 
-        $imageHtml = $isPreviewable
-            ? '<img src="' . $base64Data . '" class="max-w-full max-h-full object-contain shadow-sm rounded" alt="' . $label . '">'
-            : '<div class="text-gray-400 flex flex-col items-center text-center p-4">
-             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mb-2">
-               <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-             </svg>
-             <span class="text-sm">Preview tidak tersedia untuk format .' . $extension . '</span>
-           </div>';
+                            // --- KARTU 1: FOTO PRODUK ---
+                            \Filament\Infolists\Components\Group::make([
+                                \Filament\Infolists\Components\ImageEntry::make('user.file_foto_produk')
+                                    ->hiddenLabel()
+                                    ->state(function ($record) {
+                                        $path = $record->user->file_foto_produk;
 
-        // 3. Return HTML String yang Rapi
-        return new HtmlString('
-        <div class="border rounded-lg bg-gray-50 overflow-hidden flex flex-col w-full relative">[
-            <div class="h-64 flex items-center justify-center p-2 bg-gray-100 border-b relative">
-                ' . $imageHtml . '
-            </div>
-            
-            <div class="p-2 flex justify-center bg-white mt-auto">
-                <a href="' . $base64Data . '" 
-                   download="' . $filenamePrefix . '-' . date('YmdHis') . '.' . $extension . '"
-                   class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-500 transition w-full justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                    </svg>
-                    Unduh (.' . strtoupper($extension) . ')
-                </a>
-            </div>
-        </div>
-    ');
+                                        // Jika file tidak ada, kembalikan null
+                                        if (!$path) return null;
+
+                                        // Return URL ke route proxy yang kita buat di langkah 1
+                                        return route('drive.image', ['path' => $path]);
+                                    })
+                                    ->height(250)
+                                    ->width('100%')
+                                    ->extraImgAttributes(['class' => 'object-cover w-full h-full rounded-t-lg', 'loading' => 'lazy']),
+
+                                // Menggunakan Actions Container
+                                \Filament\Infolists\Components\Actions::make([
+                                    // PENTING: Gunakan Namespace Action Infolist
+                                    \Filament\Infolists\Components\Actions\Action::make('download_produk')
+                                        ->label('Download Foto Produk')
+                                        ->icon('heroicon-m-arrow-down-tray')
+                                        ->color('primary')
+                                        // Logic Download: Mengarahkan ke URL file asli di storage
+                                        ->action(function ($record) {
+                                            // Ini akan memicu download langsung di browser user
+                                            return Storage::disk('google')->download($record->user->file_foto_produk);
+                                        }),
+                                ])->fullWidth(),
+                            ])
+                                ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
+
+                            // --- KARTU 2: FOTO BERSAMA ---
+                            \Filament\Infolists\Components\Group::make([
+                                \Filament\Infolists\Components\ImageEntry::make('user.file_foto_bersama')
+                                    ->hiddenLabel()
+                                    ->state(function ($record) {
+                                        $path = $record->user->file_foto_bersama;
+
+                                        // Jika file tidak ada, kembalikan null
+                                        if (!$path) return null;
+
+                                        // Return URL ke route proxy yang kita buat di langkah 1
+                                        return route('drive.image', ['path' => $path]);
+                                    })
+                                    ->height(250)->width('100%')
+                                    ->extraImgAttributes(['class' => 'object-cover w-full h-full rounded-t-lg']),
+
+                                \Filament\Infolists\Components\Actions::make([
+                                    \Filament\Infolists\Components\Actions\Action::make('download_bersama')
+                                        ->label('Download Foto Bersama')
+                                        ->icon('heroicon-m-arrow-down-tray')
+                                        ->color('primary')
+                                        ->action(function ($record) {
+                                            // Ini akan memicu download langsung di browser user
+                                            return Storage::disk('google')->download($record->user->file_foto_bersama);
+                                        })
+                                ])->fullWidth(),
+                            ])
+                                ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
+
+                            // --- KARTU 3: TEMPAT USAHA ---
+                            \Filament\Infolists\Components\Group::make([
+                                \Filament\Infolists\Components\ImageEntry::make('user.file_foto_usaha')
+                                    ->hiddenLabel()
+                                    ->state(function ($record) {
+                                        $path = $record->user->file_foto_usaha;
+
+                                        // Jika file tidak ada, kembalikan null
+                                        if (!$path) return null;
+
+                                        // Return URL ke route proxy yang kita buat di langkah 1
+                                        return route('drive.image', ['path' => $path]);
+                                    })
+                                    ->height(250)->width('100%')
+                                    ->extraImgAttributes(['class' => 'object-cover w-full h-full rounded-t-lg']),
+
+                                \Filament\Infolists\Components\Actions::make([
+                                    \Filament\Infolists\Components\Actions\Action::make('download_usaha')
+                                        ->label('Download Tempat Usaha')
+                                        ->icon('heroicon-m-arrow-down-tray')
+                                        ->color('primary')
+                                        ->action(function ($record) {
+                                            // Ini akan memicu download langsung di browser user
+                                            return Storage::disk('google')->download($record->user->file_foto_usaha);
+                                        })
+                                ])->fullWidth(),
+                            ])
+                                ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
+
+                            // --- KARTU 4: KTP ---
+                            \Filament\Infolists\Components\Group::make([
+                                \Filament\Infolists\Components\ImageEntry::make('user.file_ktp')
+                                    ->hiddenLabel()
+                                    ->state(function ($record) {
+                                        $path = $record->user->file_ktp;
+
+                                        // Jika file tidak ada, kembalikan null
+                                        if (!$path) return null;
+
+                                        // Return URL ke route proxy yang kita buat di langkah 1
+                                        return route('drive.image', ['path' => $path]);
+                                    })
+                                    ->height(250)->width('100%')
+                                    ->extraImgAttributes(['class' => 'object-cover w-full h-full rounded-t-lg']),
+
+                                \Filament\Infolists\Components\Actions::make([
+                                    \Filament\Infolists\Components\Actions\Action::make('download_ktp')
+                                        ->label('Download Foto KTP')
+                                        ->icon('heroicon-m-arrow-down-tray')
+                                        ->color('primary')
+                                        ->action(function ($record) {
+                                            // Ini akan memicu download langsung di browser user
+                                            return Storage::disk('google')->download($record->user->file_ktp);
+                                        })
+                                ])->fullWidth(),
+                            ])
+                                ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
+
+                        ]),
+                    ]),
+            ]);
     }
 }

@@ -22,41 +22,54 @@ class ListPengajuans extends ListRecords
     {
         $user = auth()->user();
 
-        // 1. Inisialisasi array tabs dengan tab 'Antrian' (Tab dasar)
-        $tabs = [
+        return [
+            // TAB 1: ANTRIAN (Hanya Muncul 2 Teratas)
             'antrian' => Tab::make('Antrian Masuk')
                 ->icon('heroicon-m-inbox-stack')
-                ->badge(Pengajuan::whereNull('verificator_id')->count()) // Menghitung total antrian asli
-                // 2. TAMBAHKAN 'Builder' SEBELUM VARIABEL $query
-                ->modifyQueryUsing(
-                    function (Builder $query) {
-                        return $query
-                            ->whereNull('verificator_id') // Hanya yang belum diklaim
-                            ->orderBy('created_at', 'asc') // FIFO (Yang lama di atas)
-                            ->take(5); // <--- KUNCINYA DI SINI (Hanya ambil 5)
+                // Badge tetap menghitung TOTAL antrian asli (misal: 100)
+                ->badge(Pengajuan::whereNull('verificator_id')->count())
+                ->modifyQueryUsing(function (Builder $query) {
+
+                    // LANGKAH 1: Cari ID dari 2 data teratas (FIFO)
+                    // Kita buat query terpisah (sub-query) agar tidak mengganggu paginator Filament
+                    $antrianIds = Pengajuan::query()
+                        ->whereNull('verificator_id')
+                        ->orderBy('created_at', 'asc')
+                        ->limit(2) // Batasi 2 di sini
+                        ->pluck('id')
+                        ->toArray();
+
+                    // LANGKAH 2: Filter Query Utama Filament
+                    // Jika data ada, filter whereIn ID. Jika kosong, biarkan query standar (hasil 0)
+                    if (!empty($antrianIds)) {
+                        return $query->whereIn('id', $antrianIds)
+                            ->orderBy('created_at', 'asc');
                     }
-                ),
-        ];
 
-        // 2. LOGIC KONDISIONAL:
-        // Tab "Tugas Saya" HANYA dimasukkan jika user BUKAN Super Admin.
-        // Asumsinya: Admin biasa butuh ini, Super Admin hanya memantau.
-        if (! $user->isSuperAdmin()) {
+                    // Jika tidak ada data, kembalikan query kosong
+                    return $query->whereNull('verificator_id');
+                }),
 
-            $tabs['tugas_saya'] = Tab::make('Tugas Saya')
+            // TAB 2: TUGAS SAYA (Hanya jika bukan Super Admin)
+            'tugas_saya' => ! $user->isSuperAdmin()
+                ? Tab::make('Tugas Saya')
                 ->icon('heroicon-m-user')
                 ->badge(Pengajuan::where('verificator_id', auth()->id())->count())
-                // 3. LAKUKAN HAL YANG SAMA DI SINI
                 ->modifyQueryUsing(
-                    fn(Builder $query) => $query
-                        ->where('verificator_id', $user->id)
-                );
-        }
+                    fn(Builder $query) =>
+                    $query->where('verificator_id', $user->id)
+                )
+                : null, // Return null agar array filter membersihkannya nanti
 
-        // 3. Tambahkan Tab 'Semua Data' di akhir
-        $tabs['semua'] = Tab::make('Semua Data') // Opsional: Tab untuk melihat history
-            ->modifyQueryUsing(fn($query) => $query);
+            // TAB 3: SEMUA DATA
+            'semua' => Tab::make('Semua Data')
+                ->modifyQueryUsing(fn($query) => $query),
+        ];
+    }
 
-        return $tabs;
+    // Opsional: Bersihkan nilai null dari array tabs (karena logika kondisional di atas)
+    public function getTabsWithUrl(): array
+    {
+        return array_filter(parent::getTabs());
     }
 }
