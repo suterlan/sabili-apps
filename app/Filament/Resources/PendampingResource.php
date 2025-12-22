@@ -150,17 +150,19 @@ class PendampingResource extends Resource
                                     TextEntry::make('nama_instansi')->label('Sekolah/Kampus'),
                                 ])->columns(2),
 
-                        ])->columnSpan(['lg' => 2]),
+                        ])->columnSpan(['default' => 3, 'lg' => 2]),
 
                         // ========================================================
-                        // KOLOM KANAN (SPAN 1): AKUN
+                        // KOLOM KANAN (SPAN 1) - Akun & SiHalal
                         // ========================================================
                         InfolistGroup::make([
-                            InfolistSection::make('Akun Pengguna')
-                                ->icon('heroicon-o-user-circle')
+
+                            // 1. AKUN PENGGUNA (Profil Singkat)
+                            InfolistSection::make('Profil Akun')
+                                ->icon('heroicon-o-user')
                                 ->schema([
                                     TextEntry::make('name')
-                                        ->label('Nama Lengkap')
+                                        ->label('Nama') // Label dipersingkat agar tidak sempit
                                         ->weight('bold')
                                         ->size(TextEntry\TextEntrySize::Large),
 
@@ -169,26 +171,45 @@ class PendampingResource extends Resource
                                         ->copyable(),
 
                                     TextEntry::make('phone')
-                                        ->label('No. HP / WA')
+                                        ->label('WhatsApp')
                                         ->icon('heroicon-m-phone')
                                         ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                         ->color('success'),
 
-                                    TextEntry::make('role')
-                                        ->badge()
-                                        ->color('warning'), // Asumsi role pendamping
-
-                                    TextEntry::make('status')
-                                        ->badge(),
+                                    InfolistGrid::make(2)->schema([ // Grid kecil di dalam agar rapi
+                                        TextEntry::make('role')->badge()->color('warning'),
+                                        TextEntry::make('status')->badge(),
+                                    ]),
 
                                     TextEntry::make('created_at')
                                         ->label('Terdaftar')
                                         ->since()
+                                        ->size(TextEntry\TextEntrySize::Small)
                                         ->color('gray'),
                                 ]),
-                        ])->columnSpan(['lg' => 1]),
 
-                    ]), // tutup grid utama
+                            // 2. AKUN SIHALAL (DIPISAH SESUAI REQUEST)
+                            InfolistSection::make('Akses SiHalal')
+                                ->icon('heroicon-o-key')
+                                // ->color('primary') // Warna header berbeda biar mencolok
+                                ->schema([
+                                    TextEntry::make('akun_halal')
+                                        ->label('Username')
+                                        ->icon('heroicon-m-user')
+                                        ->copyable()
+                                        ->weight('medium'),
+
+                                    TextEntry::make('pass_akun_halal')
+                                        ->label('Password')
+                                        ->icon('heroicon-m-lock-closed') // Icon gembok
+                                        ->copyable()
+                                        ->fontFamily('mono') // Font monospace agar huruf l/1/I jelas
+                                        ->color('danger'), // Warna merah agar hati-hati
+                                ]),
+
+                        ])->columnSpan(['default' => 3, 'lg' => 1]), // Ambil 1 bagian (Sisa)
+
+                    ]), // End Grid Utama
 
                 // ========================================================
                 // BAGIAN BAWAH: DOKUMEN (FULL WIDTH / LEBAR PENUH)
@@ -233,6 +254,7 @@ class PendampingResource extends Resource
                     ->columns([
                         'default' => 1,
                         'sm' => 2, // Tampil 2 kolom agar rapi
+                        'xl' => 4, // Tampil 4 kolom di layar besar
                     ])
                     ->columnSpanFull(),
             ]);

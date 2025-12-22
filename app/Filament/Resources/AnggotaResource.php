@@ -78,7 +78,9 @@ class AnggotaResource extends Resource
                         Forms\Components\Grid::make(2)->schema([
                             Forms\Components\TextInput::make('email')
                                 ->label('Alamat Email (Opsional)')
-                                ->email(),
+                                ->email()
+                                ->unique(table: 'users', column: 'email', ignoreRecord: true)
+                                ->helperText('Email harus unik, jangan gunakan email pendamping / yang pernah di daftarkan.'),
 
                             Forms\Components\TextInput::make('pass_email')
                                 ->label('Password Email')

@@ -92,6 +92,7 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'tanggal_lahir' => 'date', // atau 'immutable_date'
         ];
     }
 

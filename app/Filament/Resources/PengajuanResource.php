@@ -17,17 +17,10 @@ use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
-use Filament\Support\Enums\FontWeight; // Untuk styling teks
-use Filament\Infolists\Components\Section as InfoSection;
-use Filament\Infolists\Components\Grid as InfoGrid;
-use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\ImageEntry;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class PengajuanResource extends Resource
 {
@@ -113,26 +106,19 @@ class PengajuanResource extends Resource
                             ->send();
                     }),
 
-                // LOGIC UPDATE STATUS
-                Tables\Actions\Action::make('update_status')
-                    ->label('Verifikasi')
-                    ->icon('heroicon-m-clipboard-document-check')
-                    ->color('warning')
-                    ->modalWidth('5xl')
-                    ->visible(function (Pengajuan $record, $livewire) {
-                        // Syarat 1: User login adalah verifikatornya
-                        $isMyTask = auth()->id() === $record->verificator_id;
-
-                        // Syarat 2: BUKAN di tab 'semua'
-                        $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
-
-                        return $isMyTask && $bukanTabHistory;
-                    })
-
+                // Action Detail 
+                Tables\Actions\Action::make('view_detail')
+                    ->label('Detail & Foto')
+                    ->icon('heroicon-m-eye')
+                    ->color('info')
+                    ->modalWidth('2xl')
+                    ->slideOver()
+                    ->modalSubmitAction(false) // Hilangkan tombol Submit karena hanya view
+                    ->modalCancelActionLabel('Tutup')
                     ->form([
                         // --- BAGIAN 1: TAMPILAN DATA USER (READ ONLY) ---
                         Section::make('Identitas Pelaku Usaha')
-                            ->columns(3)
+                            ->columns(2)
                             ->schema([
                                 Placeholder::make('nama')
                                     ->label('Nama Lengkap')
@@ -145,7 +131,9 @@ class PengajuanResource extends Resource
 
                                 Placeholder::make('tgl_lahir')
                                     ->label('Tanggal Lahir')
-                                    ->content(fn($record) => $record->user->tanggal_lahir), // Bisa tambah format date jika mau
+                                    ->content(fn($record) => $record->user->tanggal_lahir
+                                        ? $record->user->tanggal_lahir->format('d-m-Y')
+                                        : '-'),
 
                                 Placeholder::make('hp')
                                     ->label('No. Telepon/WA')
@@ -170,50 +158,82 @@ class PengajuanResource extends Resource
                         Section::make('Dokumentasi Foto')
                             ->description('Preview foto dokumentasi usaha.')
                             ->schema([
-                                Grid::make(3)->schema([
-                                    // FOTO 1: PRODUK
+                                // Gunakan Grid 1 atau 2 untuk slideover
+                                Grid::make(1)->schema([
+                                    // 1. FOTO PRODUK
                                     Placeholder::make('img_produk')
                                         ->label('1. Foto Produk')
-                                        ->content(fn($record) => new HtmlString('
-                                            <div class="border rounded-lg p-2 bg-gray-50 h-72 flex items-center justify-center">
-                                                <img src="' . self::getBase64Image($record->user->file_foto_produk) . '" 
-                                                class="max-w-full max-h-full object-contain rounded" 
-                                                alt="Foto Produk">
-                                            </div>
-                                        ')),
+                                        ->content(fn($record) => self::generatePhotoCard(
+                                            self::getBase64Image($record->user->file_foto_produk), // Pastikan helper getBase64Image Anda mengembalikan full string lengkap dengan header
+                                            'Foto Produk',
+                                            'Produk-' . Str::slug($record->user->name)
+                                        )),
 
-                                    // FOTO 2: BERSAMA
+                                    // 2. FOTO BERSAMA
                                     Placeholder::make('img_bersama')
-                                        ->label('2. Foto Bersama Pendamping')
-                                        ->content(fn($record) => new HtmlString('
-                                            <div class="border rounded-lg p-2 bg-gray-50 h-72 flex items-center justify-center">
-                                                <img src="' . self::getBase64Image($record->user->file_foto_bersama) . '" 
-                                                class="max-w-full max-h-full object-contain rounded" 
-                                                alt="Foto Bersama">
-                                            </div>
-                                        ')),
+                                        ->label('2. Foto Bersama')
+                                        ->content(fn($record) => self::generatePhotoCard(
+                                            self::getBase64Image($record->user->file_foto_bersama),
+                                            'Foto Bersama',
+                                            'Bersama-' . Str::slug($record->user->name)
+                                        )),
 
-                                    // FOTO 3: TEMPAT USAHA
+                                    // 3. FOTO TEMPAT USAHA
                                     Placeholder::make('img_usaha')
                                         ->label('3. Foto Tempat Usaha')
-                                        ->content(fn($record) => new HtmlString('
-                                            <div class="border rounded-lg p-2 bg-gray-50 h-72 flex items-center justify-center">
-                                                <img src="' . self::getBase64Image($record->user->file_foto_usaha) . '" 
-                                                class="max-w-full max-h-full object-contain rounded" 
-                                                alt="Foto Usaha">
-                                            </div>
-                                        ')),
+                                        ->content(fn($record) => self::generatePhotoCard(
+                                            self::getBase64Image($record->user->file_foto_usaha),
+                                            'Foto Usaha',
+                                            'Usaha-' . Str::slug($record->user->name)
+                                        )),
+
+                                    // 4. FOTO KTP
+                                    Placeholder::make('img_ktp')
+                                        ->label('4. Foto KTP')
+                                        ->content(fn($record) => self::generatePhotoCard(
+                                            self::getBase64Image($record->user->file_ktp),
+                                            'Foto KTP',
+                                            'KTP-' . Str::slug($record->user->name)
+                                        )),
                                 ]),
                             ]),
+                    ]),
 
+                // LOGIC UPDATE STATUS
+                Tables\Actions\Action::make('update_status')
+                    ->label('Verifikasi')
+                    ->icon('heroicon-m-clipboard-document-check')
+                    ->color('warning')
+                    ->slideOver() // 1. Ubah jadi SlideOver agar tidak menumpuk/overflow
+                    ->stickyModalHeader() // Header slideover selalu terlihat
+                    ->stickyModalFooter() // Footer slideover selalu terlihat
+                    ->modalWidth('2xl') // Sesuaikan lebar slideover
+
+                    ->visible(function (Pengajuan $record, $livewire) {
+                        // Syarat 1: User login adalah verifikatornya
+                        $isMyTask = auth()->id() === $record->verificator_id;
+
+                        // Syarat 2: BUKAN di tab 'semua'
+                        $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
+
+                        return $isMyTask && $bukanTabHistory;
+                    })
+
+                    ->form([
                         // --- BAGIAN 3: FORM INPUT VERIFIKASI ---
                         Section::make('Keputusan Verifikasi')
                             ->schema([
+                                // Tampilkan nama user sekilas agar tidak salah orang
+                                Placeholder::make('info_user')
+                                    ->label('Pelaku Usaha')
+                                    ->content(fn($record) => $record->user->name . ' (' . $record->user->merk_dagang . ')'),
+
                                 Select::make('status_verifikasi')
                                     ->label('Status Baru')
                                     ->options(Pengajuan::getStatusVerifikasiOptions())
                                     ->required()
-                                    ->native(false),
+                                    ->native(false)
+                                    ->live(),
 
                                 Textarea::make('catatan_revisi')
                                     ->label('Catatan / Alasan Penolakan')
@@ -225,8 +245,6 @@ class PengajuanResource extends Resource
                                     ])), // Wajib isi catatan jika statusnya Revisi/Tolak
                             ])
                     ])
-
-                    // --- 3. EKSEKUSI DATA ---
                     ->action(function (Pengajuan $record, array $data) {
                         // 1. Update Data
                         $record->update($data);
@@ -324,5 +342,63 @@ class PengajuanResource extends Resource
         }
 
         return null;
+    }
+
+    private static function generatePhotoCard(string $base64Data, string $label, string $filenamePrefix): HtmlString
+    {
+        // 1. Deteksi MIME Type dari string Base64
+        // Format standar: "data:image/png;base64,....."
+        $mimeType = 'image/jpeg'; // Default fallback
+        $extension = 'jpg';      // Default fallback
+
+        if (preg_match('/^data:(\w+\/[\w-]+);base64,/', $base64Data, $matches)) {
+            $mimeType = $matches[1]; // contoh: image/png
+
+            // Mapping ekstensi manual agar akurat
+            $extensions = [
+                'image/jpeg' => 'jpg',
+                'image/jpg'  => 'jpg',
+                'image/png'  => 'png',
+                'image/webp' => 'webp',
+                'image/gif'  => 'gif',
+                'image/heic' => 'heic', // Browser tidak bisa render ini, tapi download aman
+                'application/pdf' => 'pdf',
+            ];
+
+            $extension = $extensions[$mimeType] ?? 'jpg';
+        }
+
+        // 2. Logic Tampilan: Jika HEIC, tampilkan icon placeholder (karena browser gagal render)
+        // Jika format biasa (jpg/png), tampilkan gambarnya.
+        $isPreviewable = in_array($extension, ['jpg', 'png', 'webp', 'gif']);
+
+        $imageHtml = $isPreviewable
+            ? '<img src="' . $base64Data . '" class="max-w-full max-h-full object-contain shadow-sm rounded" alt="' . $label . '">'
+            : '<div class="text-gray-400 flex flex-col items-center text-center p-4">
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mb-2">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+             </svg>
+             <span class="text-sm">Preview tidak tersedia untuk format .' . $extension . '</span>
+           </div>';
+
+        // 3. Return HTML String yang Rapi
+        return new HtmlString('
+        <div class="border rounded-lg bg-gray-50 overflow-hidden flex flex-col w-full relative">[
+            <div class="h-64 flex items-center justify-center p-2 bg-gray-100 border-b relative">
+                ' . $imageHtml . '
+            </div>
+            
+            <div class="p-2 flex justify-center bg-white mt-auto">
+                <a href="' . $base64Data . '" 
+                   download="' . $filenamePrefix . '-' . date('YmdHis') . '.' . $extension . '"
+                   class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-500 transition w-full justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    Unduh (.' . strtoupper($extension) . ')
+                </a>
+            </div>
+        </div>
+    ');
     }
 }
