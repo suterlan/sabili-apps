@@ -82,6 +82,7 @@ class PengajuanResource extends Resource
                     ->placeholder('Belum Diklaim')
                     ->icon('heroicon-m-user'),
             ])
+            ->recordUrl(null) // Matikan fungsi klik baris
             ->actions([
                 // LOGIC KLAIM TUGAS (Sama seperti sebelumnya, tapi sekarang update model Pengajuan)
                 Tables\Actions\Action::make('claim_task')
@@ -98,7 +99,6 @@ class PengajuanResource extends Resource
 
                         return $belumDiklaim && $bukanTabHistory;
                     })
-
                     ->action(function (Pengajuan $record) {
                         // 1. Update Data
                         $record->update([
@@ -117,6 +117,7 @@ class PengajuanResource extends Resource
                 // Action Detail pada Tabel
                 \Filament\Tables\Actions\ViewAction::make()
                     ->label('Detail & Foto')
+                    ->slideOver()
                     ->color('info')
 
                     ->visible(function (Pengajuan $record) {
@@ -289,6 +290,44 @@ class PengajuanResource extends Resource
                         ])
                         ->columns(4)
                         ->columnSpanFull(),
+
+                    // --- [BARU] INFORMASI AKUN SIHALAL PENDAMPING ---
+                    \Filament\Infolists\Components\Section::make('Akun SiHalal Pendamping')
+                        ->icon('heroicon-o-key')
+                        ->schema([
+                            // Pastikan ganti 'sihalal_username' sesuai nama kolom di database Anda
+                            \Filament\Infolists\Components\TextEntry::make('sihalal_username_view')
+                                ->label('Username / Email')
+                                ->icon('heroicon-m-at-symbol')
+
+                                ->state(function ($record) {
+                                    // Ambil data secara manual agar string terbaca jelas oleh clipboard
+                                    return $record->user->pendamping?->akun_halal;
+                                })
+
+                                ->copyable() // Bisa dicopy
+                                ->copyMessage('Username disalin')
+                                ->fontFamily(\Filament\Support\Enums\FontFamily::Mono) // Font seperti koding agar jelas
+                                ->placeholder('Belum diatur'),
+
+                            // Pastikan ganti 'sihalal_password' sesuai nama kolom di database Anda
+                            \Filament\Infolists\Components\TextEntry::make('sihalal_password_view')
+                                ->label('Password')
+                                ->icon('heroicon-m-lock-closed')
+                                ->state(function ($record) {
+                                    // Ambil data secara manual agar string terbaca jelas oleh clipboard
+                                    return $record->user->pendamping?->pass_akun_halal;
+                                })
+                                ->copyable() // Bisa dicopy
+                                ->copyMessage('Password disalin')
+                                ->fontFamily(\Filament\Support\Enums\FontFamily::Mono)
+                                ->placeholder('Belum diatur')
+                                ->color('danger'),
+                        ])
+                        ->columns(2)
+                        ->columnSpanFull()
+                        // Hanya muncul jika User punya pendamping
+                        ->visible(fn($record) => $record->user->pendamping_id !== null),
 
                 ])
                     ->columns(2)

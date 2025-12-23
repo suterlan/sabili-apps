@@ -254,6 +254,7 @@ class PendampingResource extends Resource
                     ->columns([
                         'default' => 1,
                         'sm' => 2, // Tampil 2 kolom agar rapi
+                        'md' => 2,
                         'xl' => 4, // Tampil 4 kolom di layar besar
                     ])
                     ->columnSpanFull(),

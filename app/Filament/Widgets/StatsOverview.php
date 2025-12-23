@@ -35,23 +35,43 @@ class StatsOverview extends BaseWidget
                     // Arahkan ke Tab 'antrian' di PengajuanResource
                     ->url(PengajuanResource::getUrl('index', ['activeTab' => 'antrian'])),
 
-                // 2. Sedang Diproses (Oleh Semua Admin)
-                Stat::make('Dalam Proses Verifikasi', Pengajuan::whereNotNull('verificator_id')
-                    ->where('status_verifikasi', '!=', Pengajuan::STATUS_SELESAI)
-                    ->count())
-                    ->description('Sedang dikerjakan tim')
-                    ->descriptionIcon('heroicon-m-arrow-path')
-                    ->color('warning'),
-
-                // 3. Tugas Saya (Khusus Admin yang login)
-                Stat::make('Tugas Saya', Pengajuan::where('verificator_id', $user->id)
+                // 2. Tugas Saya (Sedang Dikerjakan) (Khusus Admin yang login)
+                Stat::make('Tugas Saya (Aktif)', Pengajuan::where('verificator_id', $user->id)
                     ->where('status_verifikasi', '!=', Pengajuan::STATUS_SELESAI)
                     ->count())
                     ->description('Harus Anda selesaikan')
                     ->descriptionIcon('heroicon-m-user')
-                    ->color('primary')
+                    ->color('warning')
                     // Arahkan ke Tab 'tugas_saya'
                     ->url(PengajuanResource::getUrl('index', ['activeTab' => 'tugas_saya'])),
+
+                // 3. [BARU] Tugas Selesai (History Saya)
+                Stat::make('Tugas Selesai', Pengajuan::where('verificator_id', $user->id)
+                    ->where('status_verifikasi', Pengajuan::STATUS_SELESAI)
+                    ->count())
+                    ->description('Total verifikasi berhasil Anda')
+                    ->descriptionIcon('heroicon-m-clipboard-document-check')
+                    ->color('success')
+                    ->chart([2, 5, 10, 8, 15, 20]) // Chart dummy kenaikan kinerja
+                    // Jika diklik, arahkan ke tab Semua Data dengan filter Status Selesai
+                    ->url(PengajuanResource::getUrl('index', [
+                        'activeTab' => 'semua',
+                        // Opsional: Jika di Resource Anda ada Filter Status, ini akan otomatis ter-apply
+                        'tableFilters' => [
+                            'status_verifikasi' => [
+                                'values' => [Pengajuan::STATUS_SELESAI]
+                            ]
+                        ]
+                    ])),
+
+                // 4. (Opsional) Total Sedang Diproses Tim Lain
+                Stat::make('Diproses Tim Lain', Pengajuan::whereNotNull('verificator_id')
+                    ->where('verificator_id', '!=', $user->id) // Bukan saya
+                    ->where('status_verifikasi', '!=', Pengajuan::STATUS_SELESAI)
+                    ->count())
+                    ->description('Dikerjakan rekan admin lain')
+                    ->color('gray'),
+
             ];
         }
 

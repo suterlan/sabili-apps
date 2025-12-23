@@ -30,12 +30,12 @@ class ListPengajuans extends ListRecords
                 ->badge(Pengajuan::whereNull('verificator_id')->count())
                 ->modifyQueryUsing(function (Builder $query) {
 
-                    // LANGKAH 1: Cari ID dari 2 data teratas (FIFO)
+                    // LANGKAH 1: Cari ID dari 5 data teratas (FIFO)
                     // Kita buat query terpisah (sub-query) agar tidak mengganggu paginator Filament
                     $antrianIds = Pengajuan::query()
                         ->whereNull('verificator_id')
                         ->orderBy('created_at', 'asc')
-                        ->limit(2) // Batasi 2 di sini
+                        ->limit(5) // Batasi 5 di sini
                         ->pluck('id')
                         ->toArray();
 
@@ -63,7 +63,21 @@ class ListPengajuans extends ListRecords
 
             // TAB 3: SEMUA DATA
             'semua' => Tab::make('Semua Data')
-                ->modifyQueryUsing(fn($query) => $query),
+                ->modifyQueryUsing(function (Builder $query) {
+                    $user = auth()->user();
+
+                    // 1. Jika Super Admin, tampilkan SEMUA (return query mentah)
+                    if ($user->isSuperAdmin()) {
+                        return $query;
+                    }
+
+                    // 2. Jika Admin Biasa, filter logic:
+                    // (Verificator KOSONG) ATAU (Verificator adalah SAYA)
+                    return $query->where(function (Builder $q) use ($user) {
+                        $q->whereNull('verificator_id')
+                            ->orWhere('verificator_id', $user->id);
+                    });
+                }),
         ];
     }
 
