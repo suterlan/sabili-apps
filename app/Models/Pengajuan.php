@@ -10,11 +10,17 @@ class Pengajuan extends Model
 
     // DEFINISI STATUS
     const STATUS_MENUNGGU = 'Menunggu Verifikasi';
-    const STATUS_NIK_TERDAFTAR = 'NIK sudah Terdaftar NIB';
-    const STATUS_UPLOAD_NIB = 'Silahkan Upload foto NIB';
-    const STATUS_NIK_INVALID = 'Data NIK Tidak Valid';
-    const STATUS_UPLOAD_KK = 'Silahkan Upload KK';
     const STATUS_DIPROSES = 'Pengajuan Diproses';
+
+    const STATUS_LOLOS_VERIFIKASI = 'Lolos Verifikasi';
+
+    const STATUS_UPLOAD_NIB = 'Silahkan Upload foto NIB (NIK sudah terdaftar NIB)';
+    const STATUS_NIK_INVALID = 'Data NIK Tidak Valid';
+    const STATUS_UPLOAD_ULANG_FOTO = 'Silahkan Upload Ulang Foto';
+
+    const STATUS_PENGAJUAN_DIKIRIM = 'Pengajuan Dikirim';
+    const STATUS_PENGAJUAN_DITOLAK = 'Pengajuan Ditolak';
+
     const STATUS_SERTIFIKAT = 'Sertifikat Diterbitkan';
     const STATUS_INVOICE = 'Invoice Diajukan';
     const STATUS_SELESAI = 'Selesai';
@@ -23,11 +29,17 @@ class Pengajuan extends Model
     {
         return [
             self::STATUS_MENUNGGU => 'Menunggu Verifikasi',
-            self::STATUS_NIK_TERDAFTAR => 'NIK sudah Terdaftar NIB',
-            self::STATUS_UPLOAD_NIB => 'Silahkan Upload foto NIB',
-            self::STATUS_NIK_INVALID => 'Data NIK Tidak Valid',
-            self::STATUS_UPLOAD_KK => 'Silahkan Upload KK',
             self::STATUS_DIPROSES => 'Pengajuan Diproses',
+
+            self::STATUS_LOLOS_VERIFIKASI => 'Lolos Verifikasi',
+
+            self::STATUS_UPLOAD_NIB => 'Silahkan Upload foto NIB (NIK sudah terdaftar NIB)',
+            self::STATUS_NIK_INVALID => 'Data NIK Tidak Valid',
+            self::STATUS_UPLOAD_ULANG_FOTO => 'Silahkan Upload Ulang Foto',
+
+            self::STATUS_PENGAJUAN_DIKIRIM => 'Pengajuan Dikirim',
+            self::STATUS_PENGAJUAN_DITOLAK => 'Pengajuan Ditolak',
+
             self::STATUS_SERTIFIKAT => 'Sertifikat Diterbitkan',
             self::STATUS_INVOICE => 'Invoice Diajukan',
             self::STATUS_SELESAI => 'Selesai',

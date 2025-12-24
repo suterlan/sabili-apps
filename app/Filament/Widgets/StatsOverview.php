@@ -22,9 +22,50 @@ class StatsOverview extends BaseWidget
         $user = Auth::user();
 
         // ==========================================
-        // LOGIKA ADMIN & SUPERADMIN
+        // 1. LOGIKA SUPER ADMIN (HELICOPTER VIEW)
         // ==========================================
-        if ($user->isAdmin() || $user->isSuperAdmin()) {
+        // Super Admin melihat statistik global seluruh sistem
+        if ($user->isSuperAdmin()) {
+            return [
+                // A. Total Backlog (Antrian yang belum dipegang siapapun)
+                Stat::make('Total Antrian Sistem', Pengajuan::whereNull('verificator_id')->count())
+                    ->description('Menunggu verifikator')
+                    ->descriptionIcon('heroicon-m-inbox-stack')
+                    ->chart([10, 5, 20, 5, 30]) // Dummy chart beban kerja
+                    ->color('danger'),
+
+                // B. Total Workload (Sedang dikerjakan oleh seluruh Admin)
+                Stat::make('Sedang Diproses (Global)', Pengajuan::whereNotNull('verificator_id')
+                    ->whereNotIn('status_verifikasi', [Pengajuan::STATUS_SELESAI, Pengajuan::STATUS_SERTIFIKAT])
+                    ->count())
+                    ->description('Active workload tim verifikator')
+                    ->descriptionIcon('heroicon-m-briefcase')
+                    ->chart([5, 10, 15, 10])
+                    ->color('warning'),
+
+                // C. Performance Output (Sertifikat Terbit)
+                Stat::make('Total Sertifikat Terbit', Pengajuan::whereIn('status_verifikasi', [
+                    Pengajuan::STATUS_SERTIFIKAT,
+                    Pengajuan::STATUS_SELESAI
+                ])->count())
+                    ->description('Akumulasi kesuksesan')
+                    ->descriptionIcon('heroicon-m-trophy')
+                    ->chart([1, 5, 10, 20, 40])
+                    ->color('success'),
+
+                // D. Growth (Total Pelaku Usaha)
+                Stat::make('Total Pelaku Usaha', User::where('role', 'member')->count()) // Sesuaikan value role di DB
+                    ->description('User terdaftar')
+                    ->descriptionIcon('heroicon-m-user-group')
+                    ->color('primary')
+                    ->url(AnggotaResource::getUrl('index')),
+            ];
+        }
+
+        // ==========================================
+        // LOGIKA ADMIN
+        // ==========================================
+        if ($user->isAdmin()) {
             return [
                 // 1. Total Antrian (Belum ada verificator)
                 Stat::make('Antrian Masuk', Pengajuan::whereNull('verificator_id')->count())
@@ -127,62 +168,79 @@ class StatsOverview extends BaseWidget
                     // Klik masuk ke list anggota tanpa filter
                     ->url(AnggotaResource::getUrl('index')),
 
-                // 2. Belum Diproses (Masih di Antrian Global)
-                Stat::make('Menunggu Antrian', (clone $myPengajuans)
-                    ->where('status_verifikasi', Pengajuan::STATUS_MENUNGGU)
-                    ->count())
-                    ->description('Belum Diproses')
-                    ->icon('heroicon-m-inbox')
-                    ->color('gray'),
-
-                // 3. Sedang Diproses (Sudah diambil Admin)
-                Stat::make('Sedang Diproses', (clone $myPengajuans)
-                    ->where('status_verifikasi', Pengajuan::STATUS_DIPROSES)
-                    ->count())
-                    ->description('Sedang dikerjakan Admin')
-                    ->icon('heroicon-m-clock')
-                    ->color('warning'),
-
-                // 4. Perlu Revisi / Tindakan (Penting!)
+                // -------------------------------------------------------------
+                // 2. PERLU REVISI (Prioritas Paling Tinggi untuk dilihat)
+                // -------------------------------------------------------------
                 Stat::make('Perlu Revisi', (clone $myPengajuans)
                     ->whereIn('status_verifikasi', [
                         Pengajuan::STATUS_NIK_INVALID,
-                        Pengajuan::STATUS_NIK_TERDAFTAR,
-                        Pengajuan::STATUS_UPLOAD_NIB,
-                        Pengajuan::STATUS_UPLOAD_KK
+                        Pengajuan::STATUS_UPLOAD_NIB,         // Konstanta baru (teks panjang)
+                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,  // Konstanta baru
+                        Pengajuan::STATUS_PENGAJUAN_DITOLAK
                     ])->count())
                     ->description('Cek status Upload NIB/KK/Invalid')
                     ->descriptionIcon('heroicon-m-exclamation-triangle')
                     ->icon('heroicon-m-exclamation-triangle')
                     ->color('danger') // Merah biar eye-catching
-                    ->chart([2, 4, 1, 4])
+                    ->chart([5, 2, 5, 2])
                     // --- MAGIC LINK FILTER ---
                     // Ini akan otomatis mencentang filter di tabel Anggota
                     ->url(AnggotaResource::getUrl('index', ['tableFilters' => [
                         'status_verifikasi' => ['values' => [
                             Pengajuan::STATUS_NIK_INVALID,
-                            Pengajuan::STATUS_UPLOAD_NIB,
-                            Pengajuan::STATUS_UPLOAD_KK
+                            Pengajuan::STATUS_UPLOAD_NIB,         // Konstanta baru (teks panjang)
+                            Pengajuan::STATUS_UPLOAD_ULANG_FOTO,  // Konstanta baru
+                            Pengajuan::STATUS_PENGAJUAN_DITOLAK
                         ]]
                     ]])),
 
-                // 5. LOLOS VERIFIKASI / INVOICE (Tahap Administrasi)
-                // Ini fase di mana teknis sudah OK, menunggu pembayaran/admin
-                Stat::make('Lolos Verifikasi (Invoice)', (clone $myPengajuans)
-                    ->where('status_verifikasi', Pengajuan::STATUS_INVOICE)
-                    ->count())
-                    ->description('Menunggu proses akhir')
-                    ->icon('heroicon-m-document-currency-dollar') // Ikon Invoice
-                    ->color('info') // Biru
-                    ->chart([5, 8, 10, 12]),
-
-                // 6. Selesai (Verifikasi Selesai)
-                Stat::make('Sertifikat Terbit', (clone $myPengajuans)
+                // -------------------------------------------------------------
+                // 3. MENUNGGU & DIPROSES (Tahap Pengerjaan Admin)
+                // -------------------------------------------------------------
+                Stat::make('Dalam Pengerjaan', (clone $myPengajuans)
                     ->whereIn('status_verifikasi', [
-                        Pengajuan::STATUS_SERTIFIKAT,
+                        Pengajuan::STATUS_MENUNGGU,
+                        Pengajuan::STATUS_DIPROSES
+                    ])
+                    ->count())
+                    ->description('Menunggu / Sedang Diverifikasi')
+                    ->icon('heroicon-m-arrow-path')
+                    ->color('warning') // Kuning
+                    ->chart([10, 8, 5, 10]),
+
+                // -------------------------------------------------------------
+                // 4. LOLOS VERIFIKASI (Admin Selesai, Menunggu Sertifikat)
+                // -------------------------------------------------------------
+                Stat::make('Lolos Verifikasi & Dikirim', (clone $myPengajuans)
+                    ->whereIn('status_verifikasi', [
+                        Pengajuan::STATUS_LOLOS_VERIFIKASI,   // Konstanta baru
+                        Pengajuan::STATUS_PENGAJUAN_DIKIRIM   // Konstanta baru
+                    ])->count())
+                    ->description('Menunggu penerbitan sertifikat')
+                    ->icon('heroicon-m-paper-airplane')
+                    ->color('info') // Biru Muda
+                    ->chart([2, 4, 6, 8]),
+
+                // -------------------------------------------------------------
+                // 5. SERTIFIKAT TERBIT (Menunggu Invoice)
+                // -------------------------------------------------------------
+                Stat::make('Sertifikat Terbit', (clone $myPengajuans)
+                    ->where('status_verifikasi', Pengajuan::STATUS_SERTIFIKAT)
+                    ->count())
+                    ->description('Menunggu tagihan/invoice')
+                    ->icon('heroicon-m-document-check')
+                    ->color('success') // Hijau
+                    ->chart([5, 10, 8, 12]),
+
+                // -------------------------------------------------------------
+                // 6. TAHAP AKHIR (Invoice & Selesai)
+                // -------------------------------------------------------------
+                Stat::make('Selesai & Tagihan', (clone $myPengajuans)
+                    ->whereIn('status_verifikasi', [
+                        Pengajuan::STATUS_INVOICE,
                         Pengajuan::STATUS_SELESAI
                     ])->count())
-                    ->description('Sertifikat telah diterbitkan')
+                    ->description('Invoice keluar atau Selesai')
                     ->descriptionIcon('heroicon-m-check-badge')
                     ->icon('heroicon-m-check-badge')
                     ->color('success')
@@ -190,7 +248,10 @@ class StatsOverview extends BaseWidget
                     ->url(AnggotaResource::getUrl('index', [
                         'tableFilters' => [
                             'status_verifikasi' => [
-                                'values' => [Pengajuan::STATUS_SELESAI]
+                                'values' => [
+                                    Pengajuan::STATUS_INVOICE,
+                                    Pengajuan::STATUS_SELESAI
+                                ]
                             ]
                         ]
                     ])),

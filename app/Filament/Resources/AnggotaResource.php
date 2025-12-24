@@ -427,27 +427,28 @@ class AnggotaResource extends Resource
                     ->badge()
                     ->placeholder('Belum Diajukan') // Jika null
                     ->color(fn($state) => match ($state) {
-                        // Abu-abu
-                        Pengajuan::STATUS_MENUNGGU => 'gray',
-
                         // Merah (Error/Masalah)
-                        Pengajuan::STATUS_NIK_TERDAFTAR,
-                        Pengajuan::STATUS_NIK_INVALID => 'danger',
+                        Pengajuan::STATUS_NIK_INVALID,
+                        Pengajuan::STATUS_UPLOAD_NIB,
+                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
+                        Pengajuan::STATUS_PENGAJUAN_DITOLAK => 'danger',
 
                         // Kuning (Butuh Tindakan User)
-                        Pengajuan::STATUS_UPLOAD_NIB,
-                        Pengajuan::STATUS_UPLOAD_KK => 'warning',
+                        Pengajuan::STATUS_MENUNGGU,
+                        Pengajuan::STATUS_DIPROSES => 'warning',
 
                         // Biru (Proses Admin)
-                        Pengajuan::STATUS_DIPROSES,
-                        Pengajuan::STATUS_INVOICE => 'info',
+                        Pengajuan::STATUS_LOLOS_VERIFIKASI,
+                        Pengajuan::STATUS_PENGAJUAN_DIKIRIM => 'info',
 
                         // Hijau (Berhasil)
                         Pengajuan::STATUS_SERTIFIKAT,
+                        Pengajuan::STATUS_INVOICE,
                         Pengajuan::STATUS_SELESAI => 'success',
 
                         default => 'primary',
-                    }),
+                    })
+                    ->searchable(),
 
                 // KOLOM BARU: PENDAMPING
                 // Menampilkan nama pendamping dari relasi
@@ -535,9 +536,9 @@ class AnggotaResource extends Resource
                         return in_array($status, [
                             Pengajuan::STATUS_SELESAI,          // Boleh ajukan lagi kalau sudah selesai (misal perpanjangan)
                             Pengajuan::STATUS_NIK_INVALID,      // Gagal, perlu revisi
-                            Pengajuan::STATUS_NIK_TERDAFTAR,    // Gagal
+                            Pengajuan::STATUS_UPLOAD_ULANG_FOTO,    // Gagal
                             Pengajuan::STATUS_UPLOAD_NIB,       // Revisi dokumen
-                            Pengajuan::STATUS_UPLOAD_KK,        // Revisi dokumen
+                            Pengajuan::STATUS_PENGAJUAN_DITOLAK,        // Revisi dokumen
                         ]);
                         // Catatan: Status 'Menunggu', 'Diproses', 'Invoice' TIDAK ADA di sini,
                         // jadi tombol akan hilang (hidden) agar tidak double submit.

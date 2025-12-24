@@ -66,12 +66,26 @@ class PengajuanResource extends Resource
 
                 Tables\Columns\TextColumn::make('status_verifikasi')
                     ->badge()
-                    ->color(fn(string $state) => match ($state) {
-                        Pengajuan::STATUS_MENUNGGU => 'gray',
-                        Pengajuan::STATUS_NIK_TERDAFTAR, Pengajuan::STATUS_NIK_INVALID => 'danger',
-                        Pengajuan::STATUS_UPLOAD_NIB, Pengajuan::STATUS_UPLOAD_KK => 'warning',
-                        Pengajuan::STATUS_DIPROSES, Pengajuan::STATUS_INVOICE => 'info',
-                        Pengajuan::STATUS_SERTIFIKAT, Pengajuan::STATUS_SELESAI => 'success',
+                    ->color(fn($state) => match ($state) {
+                        // Merah (Error/Masalah)
+                        Pengajuan::STATUS_NIK_INVALID,
+                        Pengajuan::STATUS_UPLOAD_NIB,
+                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
+                        Pengajuan::STATUS_PENGAJUAN_DITOLAK => 'danger',
+
+                        // Kuning (Butuh Tindakan User)
+                        Pengajuan::STATUS_MENUNGGU,
+                        Pengajuan::STATUS_DIPROSES => 'warning',
+
+                        // Biru (Proses Admin)
+                        Pengajuan::STATUS_LOLOS_VERIFIKASI,
+                        Pengajuan::STATUS_PENGAJUAN_DIKIRIM => 'info',
+
+                        // Hijau (Berhasil)
+                        Pengajuan::STATUS_SERTIFIKAT,
+                        Pengajuan::STATUS_INVOICE,
+                        Pengajuan::STATUS_SELESAI => 'success',
+
                         default => 'primary',
                     })
                     ->sortable(),
@@ -122,7 +136,7 @@ class PengajuanResource extends Resource
 
                     ->visible(function (Pengajuan $record) {
                         // Syarat 1: User login adalah verifikatornya
-                        $isMyTask = auth()->id() === $record->verificator_id;
+                        $isMyTask = auth()->id() === $record->verificator_id || auth()->user()->isSuperAdmin();
                         return $isMyTask;
                     }),
 
@@ -168,6 +182,8 @@ class PengajuanResource extends Resource
                                     ->rows(3)
                                     ->required(fn($get) => in_array($get('status_verifikasi'), [
                                         Pengajuan::STATUS_NIK_INVALID,
+                                        Pengajuan::STATUS_PENGAJUAN_DITOLAK,
+                                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
                                         Pengajuan::STATUS_UPLOAD_NIB
                                     ])), // Wajib isi catatan jika statusnya Revisi/Tolak
                             ])
