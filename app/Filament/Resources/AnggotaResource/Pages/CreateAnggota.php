@@ -69,4 +69,19 @@ class CreateAnggota extends CreateRecord
 
         return $user;
     }
+
+    // =================================================================
+    // 4. UI CUSTOMIZATION (CUSTOM TOMBOL LOADING) - BARU DITAMBAHKAN
+    // Mengatur tampilan tombol Simpan agar ada efek loading
+    // =================================================================
+    protected function getFormActions(): array
+    {
+        return [];
+    }
+
+    // Opsional: Redirect ke halaman list setelah sukses
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

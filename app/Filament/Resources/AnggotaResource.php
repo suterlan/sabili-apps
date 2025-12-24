@@ -36,6 +36,7 @@ use Filament\Infolists\Components\Actions\Action;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Wizard; // Import Wizard
 
 class AnggotaResource extends Resource
 {
@@ -50,344 +51,203 @@ class AnggotaResource extends Resource
     {
         return $form
             ->schema([
-                // --- SECTION 1: DATA DIRI PELAKU USAHA ---
-                Forms\Components\Section::make('Data Diri Pelaku Usaha')
-                    ->schema([
-                        Forms\Components\TextInput::make('name')
-                            ->label('Nama Pelaku Usaha')
-                            ->required()
-                            ->live(onBlur: true) // Agar nama folder update otomatis
-                            ->maxLength(255),
 
-                        Forms\Components\TextInput::make('nik')
-                            ->label('NIK (Nomor Induk Kependudukan)')
-                            ->numeric()
-                            ->length(16)
-                            ->required(),
+                // WRAPPER UTAMA: WIZARD
+                Wizard::make([
 
-                        Forms\Components\DatePicker::make('tanggal_lahir')
-                            ->label('Tanggal Lahir')
-                            ->required(),
+                    // --- STEP 1: DATA DIRI ---
+                    Wizard\Step::make('Data Diri')
+                        ->icon('heroicon-m-user')
+                        ->description('Identitas Pemilik')
+                        ->schema([
+                            Forms\Components\TextInput::make('name')
+                                ->label('Nama Pelaku Usaha')
+                                ->required()
+                                ->live(onBlur: true)
+                                ->maxLength(255),
 
-                        Forms\Components\TextInput::make('phone')
-                            ->label('Nomor HP / WA')
-                            ->tel()
-                            ->required(),
+                            Forms\Components\TextInput::make('nik')
+                                ->label('NIK')
+                                ->mask('9999999999999999') // Angka '9' artinya digit angka (0-9). Ulangi 16 kali.
+                                ->placeholder('Masukkan 16 digit NIK')
+                                ->required(),
 
-                        // Email & Password Email
-                        Forms\Components\Grid::make(2)->schema([
-                            Forms\Components\TextInput::make('email')
-                                ->label('Alamat Email (Opsional)')
-                                ->email()
-                                ->unique(table: 'users', column: 'email', ignoreRecord: true)
-                                ->helperText('Email harus unik, jangan gunakan email pendamping / yang pernah di daftarkan.'),
+                            Forms\Components\DatePicker::make('tanggal_lahir')
+                                ->label('Tanggal Lahir')
+                                ->required(),
 
-                            Forms\Components\TextInput::make('pass_email')
-                                ->label('Password Email')
-                                ->password()
-                                ->revealable(), // Bisa diintip passwordnya
+                            Forms\Components\TextInput::make('phone')
+                                ->label('Nomor HP / WA')
+                                ->tel() // Memunculkan keyboard angka di HP
+                                ->maxLength(13) // Batas wajar no HP Indonesia
+                                ->minLength(10) // Minimal digit
+                                ->placeholder('Contoh: 08123456789')
+
+                                // --- PENTING: Script ini memblokir huruf/simbol saat mengetik ---
+                                ->extraAttributes([
+                                    'oninput' => "this.value = this.value.replace(/[^0-9]/g, '')"
+                                ])
+                                ->regex('/^(\+62|62|0)8[1-9][0-9]{6,10}$/')
+                                ->validationAttribute('Nomor HP') // Supaya pesan errornya enak dibaca
+                                ->required(),
+
+                            Forms\Components\Grid::make(2)->schema([
+                                Forms\Components\TextInput::make('email')
+                                    ->label('Email (Opsional)')
+                                    ->email()
+                                    ->unique(table: 'users', column: 'email', ignoreRecord: true)
+                                    ->helperText('Email harus unik.'),
+
+                                Forms\Components\TextInput::make('pass_email')
+                                    ->label('Password Email')
+                                    ->password()
+                                    ->revealable(),
+                            ]),
                         ]),
-                    ])->columns(2),
 
-                // --- SECTION 2: ALAMAT LENGKAP ---
-                Forms\Components\Section::make('Alamat Domisili')
-                    ->schema([
-                        Forms\Components\Textarea::make('address')
-                            ->label('Alamat Jalan / RT RW')
-                            ->columnSpanFull()
-                            ->required(),
-
-                        // --- CHAINING DROPDOWN WILAYAH ---
-                        Forms\Components\Grid::make(2)->schema([
-
-                            // 1. PROVINSI
-                            Forms\Components\Select::make('provinsi')
-                                ->label('Provinsi')
-                                ->options(Province::pluck('name', 'code')) // Ambil Nama & Kode
-                                ->searchable()
-                                ->live() // Aktifkan interaksi real-time
-                                ->afterStateUpdated(function (Set $set) {
-                                    // Reset anak-anaknya jika provinsi berubah
-                                    $set('kabupaten', null);
-                                    $set('kecamatan', null);
-                                    $set('desa', null);
-                                })
+                    // --- STEP 2: ALAMAT (Livewire Berat Disini) ---
+                    Wizard\Step::make('Domisili')
+                        ->icon('heroicon-m-map-pin')
+                        ->description('Alamat Lengkap')
+                        ->schema([
+                            Forms\Components\Textarea::make('address')
+                                ->label('Alamat Jalan / RT RW')
+                                ->columnSpanFull()
                                 ->required(),
 
-                            // 2. KABUPATEN / KOTA
-                            Forms\Components\Select::make('kabupaten')
-                                ->label('Kabupaten / Kota')
-                                ->options(function (Get $get) {
-                                    $provinsiCode = $get('provinsi');
-                                    if (!$provinsiCode) {
-                                        return Collection::empty();
-                                    }
-                                    // Ambil Kota berdasarkan Kode Provinsi
-                                    return City::where('province_code', $provinsiCode)->pluck('name', 'code');
-                                })
-                                ->searchable()
-                                ->live()
-                                ->afterStateUpdated(function (Set $set) {
-                                    $set('kecamatan', null);
-                                    $set('desa', null);
-                                })
-                                ->required(),
+                            Forms\Components\Grid::make(2)->schema([
+                                // 1. PROVINSI
+                                Forms\Components\Select::make('provinsi')
+                                    ->label('Provinsi')
+                                    ->options(Province::pluck('name', 'code'))
+                                    ->searchable()
+                                    ->live()
+                                    ->afterStateUpdated(function (Set $set) {
+                                        $set('kabupaten', null);
+                                        $set('kecamatan', null);
+                                        $set('desa', null);
+                                    })
+                                    ->required(),
 
-                            // 3. KECAMATAN
-                            Forms\Components\Select::make('kecamatan')
-                                ->label('Kecamatan')
-                                ->options(function (Get $get) {
-                                    $kabupatenCode = $get('kabupaten');
-                                    if (!$kabupatenCode) {
-                                        return Collection::empty();
-                                    }
-                                    return District::where('city_code', $kabupatenCode)->pluck('name', 'code');
-                                })
-                                ->searchable()
-                                ->live()
-                                ->afterStateUpdated(function (Set $set) {
-                                    $set('desa', null);
-                                })
-                                ->required(),
+                                // 2. KABUPATEN
+                                Forms\Components\Select::make('kabupaten')
+                                    ->label('Kabupaten / Kota')
+                                    ->options(function (Get $get) {
+                                        $provinsiCode = $get('provinsi');
+                                        if (!$provinsiCode) return Collection::empty();
+                                        return City::where('province_code', $provinsiCode)->pluck('name', 'code');
+                                    })
+                                    ->searchable()
+                                    ->live()
+                                    ->afterStateUpdated(function (Set $set) {
+                                        $set('kecamatan', null);
+                                        $set('desa', null);
+                                    })
+                                    ->required(),
 
-                            // 4. DESA / KELURAHAN
-                            Forms\Components\Select::make('desa')
-                                ->label('Desa / Kelurahan')
-                                ->options(function (Get $get) {
-                                    $kecamatanCode = $get('kecamatan');
-                                    if (!$kecamatanCode) {
-                                        return Collection::empty();
-                                    }
-                                    return Village::where('district_code', $kecamatanCode)->pluck('name', 'code');
-                                })
-                                ->searchable()
-                                ->required(),
+                                // 3. KECAMATAN
+                                Forms\Components\Select::make('kecamatan')
+                                    ->label('Kecamatan')
+                                    ->options(function (Get $get) {
+                                        $kabupatenCode = $get('kabupaten');
+                                        if (!$kabupatenCode) return Collection::empty();
+                                        return District::where('city_code', $kabupatenCode)->pluck('name', 'code');
+                                    })
+                                    ->searchable()
+                                    ->live()
+                                    ->afterStateUpdated(fn(Set $set) => $set('desa', null))
+                                    ->required(),
+
+                                // 4. DESA
+                                Forms\Components\Select::make('desa')
+                                    ->label('Desa / Kelurahan')
+                                    ->options(function (Get $get) {
+                                        $kecamatanCode = $get('kecamatan');
+                                        if (!$kecamatanCode) return Collection::empty();
+                                        return Village::where('district_code', $kecamatanCode)->pluck('name', 'code');
+                                    })
+                                    ->searchable()
+                                    ->required(),
+                            ]),
                         ]),
-                    ]),
 
-                // --- SECTION 3: DATA USAHA ---
-                Forms\Components\Section::make('Data Legalitas & Usaha')
-                    ->schema([
-                        Forms\Components\TextInput::make('merk_dagang')
-                            ->label('Merk / Jenis Dagangan')
-                            ->required(),
+                    // --- STEP 3: DATA USAHA ---
+                    Wizard\Step::make('Usaha')
+                        ->icon('heroicon-m-briefcase')
+                        ->description('Info Legalitas')
+                        ->schema([
+                            Forms\Components\TextInput::make('merk_dagang')
+                                ->label('Merk / Jenis Dagangan')
+                                ->required(),
 
-                        Forms\Components\TextInput::make('nomor_nib')
-                            ->label('Nomor NIB'),
+                            Forms\Components\TextInput::make('nomor_nib')
+                                ->label('Nomor NIB'),
 
-                        Forms\Components\TextInput::make('mitra_halal')
-                            ->default('SABILI')
-                            ->readOnly(),
-                    ])->columns(2),
+                            Forms\Components\TextInput::make('mitra_halal')
+                                ->default('SABILI')
+                                ->readOnly(),
+                        ]),
 
-                // --- SECTION 4: UPLOAD DOKUMEN ---
-                Forms\Components\Section::make('Berkas Dokumen & Foto')
-                    ->description('Format: JPG/PNG. Maksimal 8MB per file. Nama file akan otomatis dirapikan.')
-                    ->schema([
+                    // --- STEP 4: DOKUMEN (Berat Upload Disini) ---
+                    Wizard\Step::make('Dokumen')
+                        ->icon('heroicon-m-document-arrow-up')
+                        ->description('Upload Foto')
+                        ->schema([
+                            Forms\Components\Section::make('Berkas Dokumen & Foto')
+                                ->description('Otomatis dikompresi sistem. Maksimal 8MB per file.')
+                                ->schema([
 
-                        // 1. COMPONENT UNTUK PREVIEW (Menampilkan Gambar Saat Ini)
-                        Placeholder::make('preview_ktp')
-                            ->label('Preview KTP Saat Ini')
-                            ->content(function ($get) {
-                                // Ambil datanya
-                                $filePath = $get('file_ktp');
+                                    // 1. KTP
+                                    // Parameter ke-5 (isSmall) dan ke-6 (isRequired) pakai default
+                                    self::getUploadGroup('file_ktp', 'KTP', 'ktp', $form),
 
-                                // Panggil fungsi (sekarang fungsi ini sudah pintar menangani array/string)
-                                $base64 = self::getBase64Image($filePath);
+                                    // 2. NIB
+                                    // Parameter 5: false (ukuran normal/tidak small)
+                                    // Parameter 6: false (TIDAK WAJIB / OPTIONAL)
+                                    self::getUploadGroup('file_foto_nib', 'NIB', 'nib', $form, false, false),
 
-                                // Jika ada gambar, tampilkan. Jika null, tampilkan teks.
-                                if ($base64) {
-                                    return new HtmlString('
-                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
-                                            <img src="' . $base64 . '" 
-                                                class="max-h-64 rounded-md shadow-sm object-contain" 
-                                                alt="Preview KTP">
-                                        </div>
-                                    ');
-                                } else {
-                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
-                                }
-                            }),
+                                    // 3. PRODUK
+                                    self::getUploadGroup('file_foto_produk', 'Produk', 'produk', $form, true),
 
-                        // 1. FILE KTP
-                        Forms\Components\FileUpload::make('file_ktp')
-                            ->label('Ganti/Upload KTP')
-                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
-                            ->disk('google')
-                            ->visibility('private')
-                            ->image()
+                                    // 4. TEMPAT USAHA
+                                    self::getUploadGroup('file_foto_usaha', 'Tempat Usaha', 'tempat_usaha', $form),
 
-                            // Direktori: dokumen_anggota_budi/agus
-                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
-                            // Rename: ktp_agus_172812.jpg
-                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
-                                $name = Str::slug($get('name') ?? 'tanpa-nama');
-                                return 'ktp_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            })
-                            // Optimasi
-                            ->imageResizeMode('cover')
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(8192)
-                            ->downloadable()
-                            // Wajib diisi HANYA saat Buat Baru. Saat Edit, boleh kosong.
-                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
+                                    // 5. BERSAMA PENDAMPING
+                                    self::getUploadGroup('file_foto_bersama', 'Foto Bersama', 'foto_bersama', $form),
 
-                        // 2. Preview Foto NIB
-                        Placeholder::make('preview_nib')
-                            ->label('Preview Foto NIB Saat Ini')
-                            ->content(function ($get) {
-                                $filePath = $get('file_foto_nib');
-                                $base64 = self::getBase64Image($filePath);
+                                ])->columns(2),
+                        ]),
 
-                                if ($base64) {
-                                    return new HtmlString('
-                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
-                                            <img src="' . $base64 . '" 
-                                                class="max-h-64 rounded-md shadow-sm object-contain" 
-                                                alt="Preview Foto NIB">
-                                        </div>
-                                    ');
-                                } else {
-                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
-                                }
-                            }),
-                        // 2. FOTO NIB
-                        Forms\Components\FileUpload::make('file_foto_nib')
-                            ->label('Ganti/Upload Foto Dokumen NIB')
-                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
-                            ->disk('google')
-                            ->image()
-                            ->visibility('private')
-                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
-                            // Rename: nib_agus_172812.jpg
-                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
-                                $name = Str::slug($get('name') ?? 'tanpa-nama');
-                                return 'nib_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            })
-                            ->imageResizeMode('cover')
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(8192)
-                            ->downloadable(),
+                ]) // End Wizard
+                    ->columnSpanFull() // Agar Wizard lebar penuh
+                    ->skippable(false) // User harus isi urut (cegah error validasi)
+                    ->persistStepInQueryString() // Agar kalau di-refresh tetap di step yang sama
+                    // ->submitAction(new \Illuminate\Support\HtmlString('<button type="submit">Simpan</button>')) // Default sudah ada tombol submit di step akhir
+                    // --- DISINI KITA PINDAHKAN LOGIKA TOMBOL SIMPAN ---
+                    ->submitAction(
+                        Action::make('simpan')
+                            ->label('Simpan Data')
+                            ->icon('heroicon-m-check')
+                            ->color('primary') // Warna tombol
+                            ->keyBindings(['mod+s']) // Shortcut Ctrl+S
+                            ->submit('create') // Perintah untuk submit form
 
-                        // 3. Preview FOTO PRODUK
-                        Placeholder::make('preview_foto_produk')
-                            ->label('Preview Foto Produk Saat Ini')
-                            ->content(function ($get) {
-                                $filePath = $get('file_foto_produk');
-                                $base64 = self::getBase64Image($filePath);
+                            // --- CUSTOM LOADING SEPERTI PERMINTAAN ANDA ---
+                            ->extraAttributes([
+                                'class' => 'w-full', // Agar tombol terlihat penuh dan gagah (opsional)
+                                'wire:loading.attr' => 'disabled',           // Matikan saat loading
+                                'wire:loading.class' => 'opacity-50 cursor-wait', // Efek visual pudar
+                                'wire:target' => 'create',                   // Target method
+                            ])
+                    ),
 
-                                if ($base64) {
-                                    return new HtmlString('
-                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
-                                            <img src="' . $base64 . '" 
-                                                class="max-h-64 rounded-md shadow-sm object-contain" 
-                                                alt="Preview Foto Produk">
-                                        </div>
-                                    ');
-                                } else {
-                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
-                                }
-                            }),
-                        // 3. FOTO PRODUK
-                        Forms\Components\FileUpload::make('file_foto_produk')
-                            ->label('Ganti/Upload Foto Produk')
-                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
-                            ->disk('google')
-                            ->image()
-                            ->visibility('private')
-                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
-                            // Rename: produk_agus_172812.jpg
-                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
-                                $name = Str::slug($get('name') ?? 'tanpa-nama');
-                                return 'produk_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            })
-                            ->imageResizeTargetWidth('800')
-                            ->maxSize(8192)
-                            ->downloadable()
-                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
-
-                        // 4. Preview FOTO TEMPAT USAHA
-                        Placeholder::make('preview_foto_usaha')
-                            ->label('Preview Foto Tempat Usaha Saat Ini')
-                            ->content(function ($get) {
-                                $filePath = $get('file_foto_usaha');
-                                $base64 = self::getBase64Image($filePath);
-
-                                if ($base64) {
-                                    return new HtmlString('
-                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
-                                            <img src="' . $base64 . '" 
-                                                class="max-h-64 rounded-md shadow-sm object-contain" 
-                                                alt="Preview Foto Tempat Usaha">
-                                        </div>
-                                    ');
-                                } else {
-                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
-                                }
-                            }),
-                        // 4. FOTO TEMPAT USAHA
-                        Forms\Components\FileUpload::make('file_foto_usaha')
-                            ->label('Ganti/Upload Foto Tempat Usaha (Tampak Depan)')
-                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
-                            ->disk('google')
-                            ->image()
-                            ->visibility('private')
-                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
-                            // Rename: tempat_usaha_agus_172812.jpg
-                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
-                                $name = Str::slug($get('name') ?? 'tanpa-nama');
-                                return 'tempat_usaha_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            })
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(8192)
-                            ->downloadable()
-                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
-
-                        // 5. Preview FOTO BERSAMA PENDAMPING
-                        Placeholder::make('preview_foto_bersama')
-                            ->label('Preview Foto Pelaku Usaha dengan Pendamping Saat Ini')
-                            ->content(function ($get) {
-                                $filePath = $get('file_foto_bersama');
-                                $base64 = self::getBase64Image($filePath);
-
-                                if ($base64) {
-                                    return new HtmlString('
-                                        <div class="w-full flex justify-center p-4 bg-gray-100 rounded-lg border border-gray-300">
-                                            <img src="' . $base64 . '" 
-                                                class="max-h-64 rounded-md shadow-sm object-contain" 
-                                                alt="Preview Foto Bersama Pendamping">
-                                        </div>
-                                    ');
-                                } else {
-                                    return new HtmlString('<span class="text-gray-500 italic">Belum ada foto atau foto tidak dapat dimuat.</span>');
-                                }
-                            }),
-                        // 5. FOTO BERSAMA PENDAMPING
-                        Forms\Components\FileUpload::make('file_foto_bersama')
-                            ->label('Ganti/Upload Foto Pelaku Usaha dgn Pendamping')
-                            ->helperText('Biarkan kosong jika tidak ingin mengubah foto.')
-                            ->disk('google')
-                            ->image()
-                            ->visibility('private')
-                            ->directory(fn($get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
-                            // Rename: foto_bersama_agus_172812.jpg
-                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file, $get) {
-                                $name = Str::slug($get('name') ?? 'tanpa-nama');
-                                return 'foto_bersama_' . $name . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            })
-                            ->imageResizeTargetWidth('1024')
-                            ->maxSize(8192)
-                            ->downloadable()
-                            ->required(fn($livewire) => $livewire instanceof CreateRecord),
-
-                    ])->columns(2),
-
-                // --- HIDDEN FIELDS ---
+                // HIDDEN FIELDS (Diluar Wizard agar tetap ter-submit)
                 Forms\Components\Hidden::make('pendamping_id')->default(fn() => Auth::id()),
                 Forms\Components\Hidden::make('role')->default('member'),
                 Forms\Components\Hidden::make('password')
                     ->default(fn() => Hash::make('12345678'))
                     ->dehydrated(fn(string $context): bool => $context === 'create'),
+
             ]);
     }
 
@@ -666,204 +526,178 @@ class AnggotaResource extends Resource
             ->schema([
 
                 // =========================================================
-                // BAGIAN 1: DATA TEKS (Menggunakan Grid 2 Kolom)
+                // BAGIAN 1: DATA TEKS (Sama seperti sebelumnya)
                 // =========================================================
                 Group::make([
-
                     // KIRI: DATA PRIBADI
                     Section::make('Data Pribadi')
                         ->icon('heroicon-o-user')
                         ->schema([
-                            TextEntry::make('name')
-                                ->label('Nama Lengkap')
-                                ->weight('bold')
-                                ->size(TextEntry\TextEntrySize::Large),
-
-                            TextEntry::make('nik')
-                                ->label('NIK')
-                                ->copyable()
-                                ->icon('heroicon-m-identification'),
-
-                            TextEntry::make('tanggal_lahir')
-                                ->label('Tanggal Lahir')
-                                ->date('d F Y'),
-
+                            TextEntry::make('name')->label('Nama Lengkap')->weight('bold')->size(TextEntry\TextEntrySize::Large),
+                            TextEntry::make('nik')->label('NIK')->copyable()->icon('heroicon-m-identification'),
+                            TextEntry::make('tanggal_lahir')->label('Tanggal Lahir')->date('d F Y'),
                             TextEntry::make('phone')
                                 ->label('No. WhatsApp')
                                 ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                 ->color('success')
                                 ->icon('heroicon-m-phone'),
-                        ])->columnSpan(1), // Ambil 1 kolom
+                        ])->columnSpan(1),
 
                     // KANAN: ALAMAT
                     Section::make('Alamat & Lokasi')
                         ->icon('heroicon-o-map-pin')
                         ->schema([
-                            TextEntry::make('address')
-                                ->label('Alamat')
-                                ->columnSpanFull(),
-
+                            TextEntry::make('address')->label('Alamat')->columnSpanFull(),
                             TextEntry::make('province.name')->label('Provinsi'),
                             TextEntry::make('city.name')->label('Kab/Kota'),
                             TextEntry::make('district.name')->label('Kecamatan'),
                             TextEntry::make('village.name')->label('Desa/Kel'),
-                        ])->columnSpan(1), // Ambil 1 kolom
+                        ])->columnSpan(1),
 
-                    // BAWAH: LEGALITAS (Full Width di dalam grid data)
+                    // BAWAH: LEGALITAS
                     Section::make('Legalitas & Usaha')
                         ->icon('heroicon-o-briefcase')
                         ->schema([
-                            TextEntry::make('merk_dagang')
-                                ->label('Merk Dagang')
-                                ->badge()
-                                ->color('info'),
-
-                            TextEntry::make('nomor_nib')
-                                ->label('Nomor NIB')
-                                ->copyable(),
-
-                            TextEntry::make('mitra_halal')
-                                ->label('Mitra Halal')
-                                ->badge()
+                            TextEntry::make('merk_dagang')->label('Merk Dagang')->badge()->color('info'),
+                            TextEntry::make('nomor_nib')->label('Nomor NIB')->copyable(),
+                            TextEntry::make('mitra_halal')->label('Mitra Halal')->badge()
                                 ->color(fn(string $state): string => match ($state) {
                                     'YA' => 'success',
-                                    default => 'gray',
+                                    default => 'gray'
                                 }),
-
-                            TextEntry::make('pendamping.name')
-                                ->label('Pendamping')
-                                ->icon('heroicon-m-user-group'),
+                            TextEntry::make('pendamping.name')->label('Pendamping')->icon('heroicon-m-user-group'),
                         ])
-                        ->columns(4) // Isinya dibagi 4 agar memanjang kesamping
-                        ->columnSpanFull(), // Section ini ambil lebar penuh
+                        ->columns(4)
+                        ->columnSpanFull(),
 
-                ])
-                    ->columns(2) // Layout utama data teks dibagi 2 (Kiri/Kanan)
-                    ->columnSpanFull(), // PENTING: Paksa grup ini ambil lebar penuh layar
+                ])->columns(2)->columnSpanFull(),
 
 
                 // =========================================================
-                // BAGIAN 2: DOKUMEN FOTO (Di Bawah Sendiri - 2 KOLOM)
+                // BAGIAN 2: DOKUMEN FOTO (OPTIMIZED PROXY)
                 // =========================================================
                 Section::make('Dokumen & Foto')
-                    ->description('Klik ikon panah untuk membuka file asli.')
+                    ->description('Klik gambar atau ikon panah untuk melihat ukuran penuh.')
                     ->schema([
+
                         // 1. KTP
                         ImageEntry::make('file_ktp')
                             ->label('KTP')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_ktp))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_ktp')),
+                            ->disk(null) // Non-aktifkan disk agar tidak mencari file lokal
+                            // STATE: Isi state langsung dengan URL Proxy
+                            ->state(fn($record) => $record->file_ktp ? route('drive.image', ['path' => $record->file_ktp]) : null)
+                            // ACTION: Klik gambar buka tab baru
+                            ->url(fn($state) => $state)
+                            ->openUrlInNewTab()
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
+                            // BUTTON POJOK: Download/Open
+                            ->hintAction(
+                                Action::make('open_ktp')
+                                    ->icon('heroicon-o-arrow-top-right-on-square')
+                                    ->url(fn($record) => $record->file_ktp ? route('drive.image', ['path' => $record->file_ktp]) : null, true)
+                            ),
 
                         // 2. FOTO BERSAMA
                         ImageEntry::make('file_foto_bersama')
                             ->label('Foto Bersama')
                             ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_foto_bersama))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_foto_bersama')),
+                            ->state(fn($record) => $record->file_foto_bersama ? route('drive.image', ['path' => $record->file_foto_bersama]) : null)
+                            ->url(fn($state) => $state)
+                            ->openUrlInNewTab()
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
+                            ->hintAction(
+                                Action::make('open_bersama')
+                                    ->icon('heroicon-o-arrow-top-right-on-square')
+                                    ->url(fn($record) => $record->file_foto_bersama ? route('drive.image', ['path' => $record->file_foto_bersama]) : null, true)
+                            ),
 
                         // 3. TEMPAT USAHA
                         ImageEntry::make('file_foto_usaha')
                             ->label('Tempat Usaha')
                             ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_foto_usaha))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_foto_usaha')),
+                            ->state(fn($record) => $record->file_foto_usaha ? route('drive.image', ['path' => $record->file_foto_usaha]) : null)
+                            ->url(fn($state) => $state)
+                            ->openUrlInNewTab()
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
+                            ->hintAction(
+                                Action::make('open_usaha')
+                                    ->icon('heroicon-o-arrow-top-right-on-square')
+                                    ->url(fn($record) => $record->file_foto_usaha ? route('drive.image', ['path' => $record->file_foto_usaha]) : null, true)
+                            ),
 
                         // 4. FOTO PRODUK
                         ImageEntry::make('file_foto_produk')
                             ->label('Foto Produk')
                             ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_foto_produk))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_foto_produk')),
+                            ->state(fn($record) => $record->file_foto_produk ? route('drive.image', ['path' => $record->file_foto_produk]) : null)
+                            ->url(fn($state) => $state)
+                            ->openUrlInNewTab()
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
+                            ->hintAction(
+                                Action::make('open_produk')
+                                    ->icon('heroicon-o-arrow-top-right-on-square')
+                                    ->url(fn($record) => $record->file_foto_produk ? route('drive.image', ['path' => $record->file_foto_produk]) : null, true)
+                            ),
 
                         // 5. NIB
                         ImageEntry::make('file_foto_nib')
                             ->label('Dokumen NIB')
                             ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_foto_nib))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_foto_nib')),
+                            ->state(fn($record) => $record->file_foto_nib ? route('drive.image', ['path' => $record->file_foto_nib]) : null)
+                            ->url(fn($state) => $state)
+                            ->openUrlInNewTab()
+                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
+                            ->hintAction(
+                                Action::make('open_nib')
+                                    ->icon('heroicon-o-arrow-top-right-on-square')
+                                    ->url(fn($record) => $record->file_foto_nib ? route('drive.image', ['path' => $record->file_foto_nib]) : null, true)
+                            ),
+
                     ])
-                    // --- UPDATE GRID DI SINI ---
                     ->columns([
-                        'default' => 1, // HP tetap 1 kolom tumpuk
-                        'md' => 2,      // Tablet & Desktop jadi 2 kolom
+                        'default' => 1,
+                        'md' => 2,
                     ])
                     ->columnSpanFull(),
-
             ]);
     }
 
-    // --- HELPER FUNCTIONS AGAR KODE LEBIH BERSIH & RAPI ---
-    // (Tambahkan fungsi ini di dalam Class Resource Anda, di bawah method infolist)
-
-    protected static function getBase64Image($path)
+    // --- HELPER FUNCTION AGAR KODE RAPI (REUSABLE COMPONENT) ---
+    // Saya memindahkan logika upload yang berulang ke fungsi ini agar schema form bersih
+    public static function getUploadGroup($field, $label, $prefix, $form, $isSmall = false, $isRequired = true)
     {
-        // 1. Validasi Input
-        if (! $path) return null;
-        if (is_array($path)) $path = array_shift($path);
-        if (! is_string($path)) return null;
+        return Forms\Components\Group::make([
+            Forms\Components\Placeholder::make('preview_' . $prefix)
+                ->hidden(fn($record) => empty($record?->$field))
+                ->content(fn($record) => new \Illuminate\Support\HtmlString("
+                    <div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
+                        <img src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' style='height: 80px; border-radius: 4px;' loading='lazy'>
+                        <div class='text-xs text-gray-500'>
+                            <p class='font-bold text-success-600'>✓ Terupload</p>
+                            <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' target='_blank' class='text-primary-600 underline'>Lihat Penuh</a>
+                        </div>
+                    </div>
+                ")),
 
-        try {
-            $disk = \Illuminate\Support\Facades\Storage::disk('google');
-
-            if ($disk->exists($path)) {
-                // Ambil konten raw file
-                $content = $disk->get($path);
-
-                // Ambil ekstensi
-                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
-                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
-                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
-                $mime = match ($extension) {
-                    'png' => 'image/png',
-                    'jpg', 'jpeg' => 'image/jpeg',
-                    'webp' => 'image/webp',
-                    'gif' => 'image/gif',
-                    default => $disk->mimeType($path) // Fallback ke deteksi driver
-                };
-
-                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
-                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
-                    if (extension_loaded('imagick')) {
-                        try {
-                            $imagick = new \Imagick();
-                            $imagick->readImageBlob($content);
-                            $imagick->setImageFormat('jpeg');
-                            $content = $imagick->getImageBlob();
-                            $mime = 'image/jpeg';
-                            $imagick->clear();
-                            $imagick->destroy();
-                        } catch (\Exception $e) {
-                            // Jika convert gagal, biarkan apa adanya (atau return null)
-                        }
-                    }
-                }
-
-                // Return string Base64 yang valid
-                return 'data:' . $mime . ';base64,' . base64_encode($content);
-            }
-        } catch (\Exception $e) {
-            // Log error jika perlu: Log::error($e->getMessage());
-            return null;
-        }
-
-        return null;
-    }
-
-    protected static function getOpenAction($columnName)
-    {
-        return Action::make('open_' . $columnName)
-            ->icon('heroicon-m-arrow-top-right-on-square')
-            ->tooltip('Buka file asli')
-            ->url(fn($record) => $record->$columnName ? Storage::disk('google')->url($record->$columnName) : null)
-            ->openUrlInNewTab()
-            ->visible(fn($record) => $record->$columnName);
+            Forms\Components\FileUpload::make($field)
+                ->label(fn($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
+                ->disk('google')
+                ->visibility('private')
+                ->image()
+                ->fetchFileInformation(false)
+                ->maxSize(8192)
+                ->imageResizeMode('cover')
+                ->imageResizeTargetWidth($isSmall ? '800' : '1024')
+                ->uploadingMessage('Mengupload & Mengompres...')
+                ->formatStateUsing(fn() => null)
+                ->dehydrated(fn($state) => filled($state))
+                ->directory(fn(Get $get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                ->getUploadedFileNameForStorageUsing(fn($file, Get $get) => $prefix . '_' . Str::slug($get('name') ?? 'tanpa-nama') . '_' . time() . '.' . $file->getClientOriginalExtension())
+                // Wajib jika: (Parameter isRequired TRUE) DAN (Halaman adalah CreateRecord)
+                ->required(
+                    fn($livewire) =>
+                    $isRequired && ($livewire instanceof \Filament\Resources\Pages\CreateRecord)
+                ),
+        ])->columnSpan(1);
     }
 }
