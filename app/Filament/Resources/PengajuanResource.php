@@ -98,16 +98,22 @@ class PengajuanResource extends Resource
             ])
             ->recordUrl(null) // Matikan fungsi klik baris
             ->actions([
-                // LOGIC KLAIM TUGAS (Sama seperti sebelumnya, tapi sekarang update model Pengajuan)
+                // LOGIC KLAIM TUGAS
                 Tables\Actions\Action::make('claim_task')
                     ->label('Proses')
                     ->icon('heroicon-m-hand-raised')
                     ->color('primary')
                     ->visible(function (Pengajuan $record, $livewire) {
-                        // Syarat 1: Belum ada verifikator
+                        // --- ATURAN BARU ---
+                        // 1. Jika Super Admin, tombol HILANG (Return False)
+                        if (auth()->user()->isSuperAdmin()) {
+                            return false;
+                        }
+
+                        // Syarat 2: Belum ada verifikator
                         $belumDiklaim = is_null($record->verificator_id);
 
-                        // Syarat 2: BUKAN di tab 'semua'
+                        // Syarat 3: BUKAN di tab 'semua'
                         // Kita cek apakah $livewire punya properti activeTab, lalu cek isinya
                         $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
 
@@ -138,6 +144,79 @@ class PengajuanResource extends Resource
                         // Syarat 1: User login adalah verifikatornya
                         $isMyTask = auth()->id() === $record->verificator_id || auth()->user()->isSuperAdmin();
                         return $isMyTask;
+                    }),
+
+                // AKSI BATALKAN KLAIM (UNCLAIM)
+                Tables\Actions\Action::make('cancel_claim')
+                    ->label('Batalkan')
+                    ->icon('heroicon-m-arrow-uturn-left') // Ikon putar balik
+                    ->color('danger') // Merah (Hati-hati)
+                    ->requiresConfirmation()
+                    ->modalHeading('Lepaskan Tugas?')
+                    ->modalDescription(
+                        fn(Pengajuan $record) => auth()->user()->isSuperAdmin()
+                            ? "Anda akan melepas tugas milik " . ($record->verificator->name ?? 'Admin') . ". Data kembali ke antrian."
+                            : "Tugas akan dikembalikan ke antrian umum."
+                    )->modalSubmitActionLabel('Ya, Lepaskan')
+
+                    // --- LOGIKA SIAPA YANG BOLEH LIHAT ---
+                    ->visible(function (Pengajuan $record, $livewire) {
+                        $user = auth()->user();
+
+                        // 1. SYARAT MUTLAK: Harus sudah ada yang klaim
+                        if (is_null($record->verificator_id)) return false;
+
+                        // 2. Jangan batalkan jika sudah SELESAI/SERTIFIKAT (Bahaya!)
+                        if (in_array($record->status_verifikasi, [
+                            Pengajuan::STATUS_SELESAI,
+                            Pengajuan::STATUS_SERTIFIKAT,
+                            Pengajuan::STATUS_INVOICE
+                        ])) {
+                            return false;
+                        }
+
+                        // Ambil Tab yang sedang aktif
+                        $activeTab = $livewire->activeTab ?? null;
+
+                        // --- SKENARIO SUPER ADMIN ---
+                        // Super Admin hanya bisa membatalkan lewat tab 'semua' (karena gak punya tab tugas_saya)
+                        if ($user->isSuperAdmin()) {
+                            return $activeTab === 'semua';
+                        }
+
+                        // --- SKENARIO ADMIN BIASA ---
+                        // Admin hanya boleh membatalkan di tab 'tugas_saya'
+                        // Dan pastikan itu tugas miliknya sendiri
+                        if ($activeTab === 'tugas_saya') {
+                            return $record->verificator_id === $user->id;
+                        }
+                        // Jika Admin melihat tab 'semua', sembunyikan tombol ini biar aman/bersih
+                        return false;
+                    })
+
+                    // --- LOGIKA EKSEKUSI ---
+                    ->action(function (Pengajuan $record) {
+                        $oldVerificator = $record->verificator->name ?? 'Admin';
+
+                        $record->update([
+                            'verificator_id' => null, // Hapus pemilik
+                            'status_verifikasi' => Pengajuan::STATUS_MENUNGGU, // Reset status ke awal
+                        ]);
+
+                        // Notifikasi beda pesan buat Super Admin
+                        if (auth()->user()->isSuperAdmin()) {
+                            \Filament\Notifications\Notification::make()
+                                ->warning()
+                                ->title('Force Unclaim Berhasil')
+                                ->body("Tugas dari $oldVerificator telah dilepas ke antrian.")
+                                ->send();
+                        } else {
+                            \Filament\Notifications\Notification::make()
+                                ->warning()
+                                ->title('Klaim Dibatalkan')
+                                ->body('Tugas dikembalikan ke antrian umum.')
+                                ->send();
+                        }
                     }),
 
                 // LOGIC UPDATE STATUS
