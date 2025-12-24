@@ -127,37 +127,66 @@ class StatsOverview extends BaseWidget
                     // Klik masuk ke list anggota tanpa filter
                     ->url(AnggotaResource::getUrl('index')),
 
-                // 2. Perlu Revisi / Tindakan (Penting!)
+                // 2. Belum Diproses (Masih di Antrian Global)
+                Stat::make('Menunggu Antrian', (clone $myPengajuans)
+                    ->where('status_verifikasi', Pengajuan::STATUS_MENUNGGU)
+                    ->count())
+                    ->description('Belum Diproses')
+                    ->icon('heroicon-m-inbox')
+                    ->color('gray'),
+
+                // 3. Sedang Diproses (Sudah diambil Admin)
+                Stat::make('Sedang Diproses', (clone $myPengajuans)
+                    ->where('status_verifikasi', Pengajuan::STATUS_DIPROSES)
+                    ->count())
+                    ->description('Sedang dikerjakan Admin')
+                    ->icon('heroicon-m-clock')
+                    ->color('warning'),
+
+                // 4. Perlu Revisi / Tindakan (Penting!)
                 Stat::make('Perlu Revisi', (clone $myPengajuans)
                     ->whereIn('status_verifikasi', [
                         Pengajuan::STATUS_NIK_INVALID,
+                        Pengajuan::STATUS_NIK_TERDAFTAR,
                         Pengajuan::STATUS_UPLOAD_NIB,
                         Pengajuan::STATUS_UPLOAD_KK
                     ])->count())
                     ->description('Cek status Upload NIB/KK/Invalid')
                     ->descriptionIcon('heroicon-m-exclamation-triangle')
+                    ->icon('heroicon-m-exclamation-triangle')
                     ->color('danger') // Merah biar eye-catching
+                    ->chart([2, 4, 1, 4])
                     // --- MAGIC LINK FILTER ---
                     // Ini akan otomatis mencentang filter di tabel Anggota
-                    ->url(AnggotaResource::getUrl('index', [
-                        'tableFilters' => [
-                            'status_verifikasi' => [
-                                'values' => [
-                                    Pengajuan::STATUS_NIK_INVALID,
-                                    Pengajuan::STATUS_UPLOAD_NIB,
-                                    Pengajuan::STATUS_UPLOAD_KK
-                                ]
-                            ]
-                        ]
-                    ])),
+                    ->url(AnggotaResource::getUrl('index', ['tableFilters' => [
+                        'status_verifikasi' => ['values' => [
+                            Pengajuan::STATUS_NIK_INVALID,
+                            Pengajuan::STATUS_UPLOAD_NIB,
+                            Pengajuan::STATUS_UPLOAD_KK
+                        ]]
+                    ]])),
 
-                // 3. Selesai (Sertifikat Terbit)
-                Stat::make('Sertifikat Terbit', (clone $myPengajuans)
-                    ->where('status_verifikasi', Pengajuan::STATUS_SELESAI)
+                // 5. LOLOS VERIFIKASI / INVOICE (Tahap Administrasi)
+                // Ini fase di mana teknis sudah OK, menunggu pembayaran/admin
+                Stat::make('Lolos Verifikasi (Invoice)', (clone $myPengajuans)
+                    ->where('status_verifikasi', Pengajuan::STATUS_INVOICE)
                     ->count())
-                    ->description('Proses Verifikasi Selesai')
+                    ->description('Menunggu proses akhir')
+                    ->icon('heroicon-m-document-currency-dollar') // Ikon Invoice
+                    ->color('info') // Biru
+                    ->chart([5, 8, 10, 12]),
+
+                // 6. Selesai (Verifikasi Selesai)
+                Stat::make('Sertifikat Terbit', (clone $myPengajuans)
+                    ->whereIn('status_verifikasi', [
+                        Pengajuan::STATUS_SERTIFIKAT,
+                        Pengajuan::STATUS_SELESAI
+                    ])->count())
+                    ->description('Sertifikat telah diterbitkan')
                     ->descriptionIcon('heroicon-m-check-badge')
+                    ->icon('heroicon-m-check-badge')
                     ->color('success')
+                    ->chart([2, 4, 8, 16, 20])
                     ->url(AnggotaResource::getUrl('index', [
                         'tableFilters' => [
                             'status_verifikasi' => [
