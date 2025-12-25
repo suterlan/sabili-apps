@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PengajuanResource\Pages;
-use App\Filament\Resources\PengajuanResource\RelationManagers;
 use App\Models\Pengajuan;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -11,23 +10,13 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
-use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
-use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
-use Filament\Infolists\Components\Group as InfolistGroup;
-use Filament\Infolists\Components\Section as InfolistSection;
-use Filament\Infolists\Components\Grid as InfolistGrid;
-use Filament\Infolists\Components\Actions as InfolistActions;
-use Filament\Infolists\Components\Actions\Action;
-use Filament\Infolists\Components\ImageEntry;
 use Illuminate\Support\Facades\Storage;
 
 class PengajuanResource extends Resource
@@ -136,7 +125,7 @@ class PengajuanResource extends Resource
 
                 // Action Detail pada Tabel
                 \Filament\Tables\Actions\ViewAction::make()
-                    ->label('Detail & Foto')
+                    ->label('Detail')
                     ->slideOver()
                     ->color('info')
 
@@ -217,6 +206,143 @@ class PengajuanResource extends Resource
                                 ->body('Tugas dikembalikan ke antrian umum.')
                                 ->send();
                         }
+                    }),
+
+                // =========================================================
+                // ACTION EDIT DATA ANGGOTA (PELAKU USAHA) (Email, Pass, NIB, File NIB)
+                // =========================================================
+                Tables\Actions\Action::make('edit_user_data')
+                    ->label('Edit')
+                    ->icon('heroicon-m-pencil-square')
+                    ->color('primary')
+                    ->modalWidth('lg')
+
+                    // Tampilkan tombol ini hanya untuk Verifikator yang sedang memegang tugas ini
+                    ->visible(function (Pengajuan $record, $livewire) {
+                        $isMyTask = auth()->id() === $record->verificator_id;
+                        $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
+                        return $isMyTask && $bukanTabHistory;
+                    })
+
+                    // 2. ISI DATA AWAL (PRE-FILL)
+                    ->mountUsing(function (Forms\ComponentContainer $form, Pengajuan $record) {
+                        $form->fill([
+                            'email'         => $record->user->email,
+                            'pass_email'    => $record->user->pass_email, // Tampilkan password yang bisa dibaca
+                            'nomor_nib'     => $record->user->nomor_nib,
+                        ]);
+                    })
+
+                    ->form([
+                        Section::make('Informasi Akun & NIB')
+                            ->schema([
+                                // --- EMAIL ---
+                                Forms\Components\TextInput::make('email')
+                                    ->label('Email Akun')
+                                    ->email()
+                                    ->required()
+                                    ->unique('users', 'email', ignoreRecord: true, modifyRuleUsing: function ($rule, Pengajuan $record) {
+                                        return $rule->ignore($record->user_id);
+                                    }),
+
+                                // --- PASSWORD (PASS EMAIL) ---
+                                // Kita ubah pass_email, nanti di backend otomatis update password hash juga
+                                Forms\Components\TextInput::make('pass_email')
+                                    ->label('Password / Pass Email')
+                                    ->helperText('Mengubah ini akan mengupdate Password Login & Pass Email sekaligus.')
+                                    ->password()
+                                    ->revealable()
+                                    ->dehydrated(fn($state) => filled($state)),
+
+                                // --- NOMOR NIB ---
+                                Forms\Components\TextInput::make('nomor_nib')
+                                    ->label('Nomor NIB')
+                                    ->numeric()
+                                    ->required(),
+
+                                // --- PREVIEW FILE (Persis seperti Create) ---
+                                Forms\Components\Placeholder::make('preview_nib')
+                                    ->label('Preview File Saat Ini')
+                                    ->hidden(fn(Pengajuan $record) => empty($record->user->file_foto_nib))
+                                    ->content(fn(Pengajuan $record) => new \Illuminate\Support\HtmlString(
+                                        (Str::endsWith($record->user->file_foto_nib ?? '', '.pdf'))
+                                            ?
+                                            "<div class='mb-2 p-3 border rounded bg-gray-50 flex items-center gap-4'>
+                                                <div class='bg-red-100 text-red-600 p-2 rounded'>
+                                                    <svg class='w-8 h-8' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 2H7a2 2 0 00-2 2v14a2 2 0 002 2z'></path></svg>
+                                                </div>
+                                                <div class='text-xs text-gray-500'>
+                                                    <p class='font-bold text-gray-700'>Dokumen PDF</p>
+                                                    <a href='" . route('drive.image', ['path' => $record->user->file_foto_nib ?? '']) . "' target='_blank' class='text-primary-600 underline font-bold'>Download / Lihat PDF</a>
+                                                </div>
+                                            </div>"
+                                            :
+                                            "<div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
+                                                <img src='" . route('drive.image', ['path' => $record->user->file_foto_nib ?? '']) . "' style='height: 80px; border-radius: 4px; object-fit: cover;' loading='lazy'>
+                                                <div class='text-xs text-gray-500'>
+                                                    <p class='font-bold text-success-600'>✓ Terupload</p>
+                                                    <a href='" . route('drive.image', ['path' => $record->user->file_foto_nib ?? '']) . "' target='_blank' class='text-primary-600 underline'>Lihat Penuh</a>
+                                                </div>
+                                            </div>"
+                                    )),
+
+                                // --- UPLOAD FILE NIB ---
+                                Forms\Components\FileUpload::make('file_foto_nib')
+                                    ->label(fn(Pengajuan $record) => $record->user->file_foto_nib ? 'Ganti Dokumen NIB' : 'Upload Dokumen NIB')
+                                    ->helperText('Format: PDF atau JPG/PNG (Maks 5MB).')
+                                    ->disk('google')
+                                    ->visibility('private')
+                                    ->fetchFileInformation(false)
+                                    ->uploadingMessage('Mengupload...') // Feedback visual
+                                    ->maxSize(5120) // 5MB
+                                    ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'])
+                                    //OOptimasi
+                                    ->imageResizeTargetWidth('1024')
+
+                                    // --- PERBAIKAN KUNCI 1: HILANGKAN LOADING ---
+                                    // Paksa visualnya kosong agar Filament tidak mencoba fetch gambar dari GDrive ke dropzone
+                                    ->formatStateUsing(fn() => null)
+
+                                    // --- LOGIC DIREKTORI (Auth = Pendamping, Record->User = Pelaku Usaha) ---
+                                    ->directory(function (Pengajuan $record) {
+                                        return 'dokumen_anggota_' . Str::slug(auth()->user()->name) . '/' . Str::slug($record->user->name ?? 'temp');
+                                    })
+
+                                    // --- LOGIC PENAMAAN FILE ---
+                                    ->getUploadedFileNameForStorageUsing(function ($file, Pengajuan $record) {
+                                        $prefix = 'NIB';
+                                        $namaPelakuUsaha = Str::slug($record->user->name ?? 'tanpa-nama');
+                                        return $prefix . '_' . $namaPelakuUsaha . '_' . time() . '.' . $file->getClientOriginalExtension();
+                                    }),
+                            ])
+                    ])
+                    // 3. PROSES SIMPAN
+                    ->action(function (Pengajuan $record, array $data) {
+                        $updateData = [
+                            'email'         => $data['email'],
+                            'nomor_nib'     => $data['nomor_nib'],
+                        ];
+
+                        // --- PERBAIKAN KUNCI 2: LOGIC SAVE FILE ---
+                        // Cek apakah key 'file_foto_nib' ada di array $data
+                        // Karena kita pakai 'dehydrated', key ini HANYA akan ada jika user upload file baru.
+                        if (!empty($data['file_foto_nib'])) {
+                            $updateData['file_foto_nib'] = $data['file_foto_nib'];
+                        }
+
+                        // Jika pass_email diisi, update pass_email DAN password (hash)
+                        if (!empty($data['pass_email'])) {
+                            $updateData['pass_email'] = $data['pass_email'];
+                            $updateData['password']   = bcrypt($data['pass_email']);
+                        }
+
+                        $record->user->update($updateData);
+
+                        Notification::make()
+                            ->success()
+                            ->title('Data Anggota Diperbarui')
+                            ->body('Email, Password, NIB, dan Dokumen berhasil disimpan.')
+                            ->send();
                     }),
 
                 // LOGIC UPDATE STATUS

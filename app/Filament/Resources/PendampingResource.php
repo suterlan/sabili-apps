@@ -4,19 +4,32 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\PendampingResource\Pages;
 use App\Models\User;
-use Filament\Infolists\Components\Actions\Action;
+use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Filament\Infolists\Components\ImageEntry; // Jika ada foto
 use Filament\Infolists\Components\Grid as InfolistGrid;       // <--- PENTING: Pakai Alias
 use Filament\Infolists\Components\Group as InfolistGroup;     // <--- PENTING: Pakai Alias
 use Filament\Infolists\Components\Section as InfolistSection;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
+use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Tabs;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Group;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+// Import Model Wilayah Laravolt
+use Laravolt\Indonesia\Models\Province;
+use Laravolt\Indonesia\Models\City;
+use Laravolt\Indonesia\Models\District;
+use Laravolt\Indonesia\Models\Village;
 
 class PendampingResource extends Resource
 {
@@ -29,6 +42,139 @@ class PendampingResource extends Resource
     protected static ?string $slug = 'monitoring-pendamping';
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
     protected static ?int $navigationSort = 2; // Urutan menu
+
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                // KITA BUNGKUS SEMUA DALAM TABS SEPERTI USER RESOURCE
+                Tabs::make('User Data')
+                    ->tabs([
+
+                        // ====================================================
+                        // TAB 1: AKUN & LOGIN (TANPA PASSWORD)
+                        // ====================================================
+                        Tabs\Tab::make('Akun & Login')
+                            ->icon('heroicon-o-user-circle')
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    TextInput::make('name')
+                                        ->label('Nama Lengkap')
+                                        ->required(),
+
+                                    TextInput::make('email')
+                                        ->email()
+                                        ->unique(ignoreRecord: true)
+                                        ->required(),
+
+                                    TextInput::make('phone')
+                                        ->label('No HP / WA')
+                                        ->tel(),
+
+                                    Select::make('role')
+                                        ->label('Role User')
+                                        ->live()
+                                        ->options(function () {
+                                            $user = Auth::user();
+                                            if ($user && $user->isSuperAdmin()) {
+                                                return [
+                                                    'admin' => 'Admin',
+                                                    'koordinator' => 'Koordinator Kecamatan',
+                                                    'pendamping' => 'Pendamping',
+                                                ];
+                                            }
+                                            return [
+                                                'koordinator' => 'Koordinator Kecamatan',
+                                                'pendamping' => 'Pendamping',
+                                            ];
+                                        })
+                                        ->required()
+                                        ->default('pendamping'),
+                                ]),
+
+                                // Tambahan Khusus Pendamping (Akses SiHalal)
+                                Section::make('Akses SiHalal')
+                                    ->description('Informasi akun BPJPH / SiHalal')
+                                    ->schema([
+                                        Grid::make(2)->schema([
+                                            TextInput::make('akun_halal')->label('Username SiHalal'),
+                                            TextInput::make('pass_akun_halal')->label('Password SiHalal'),
+                                        ]),
+                                    ]),
+                            ]),
+
+                        // ====================================================
+                        // TAB 2: DATA WILAYAH (Dependent Select)
+                        // ====================================================
+                        Tabs\Tab::make('Wilayah & Domisili')
+                            ->icon('heroicon-o-map')
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    Select::make('provinsi') // Pastikan nama kolom di DB 'provinsi' atau 'province_id'
+                                        ->label('Provinsi')
+                                        ->options(Province::pluck('name', 'code'))
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(function (Set $set) {
+                                            $set('kabupaten', null);
+                                            $set('kecamatan', null);
+                                            $set('desa', null);
+                                        }),
+
+                                    Select::make('kabupaten')
+                                        ->label('Kabupaten / Kota')
+                                        ->options(fn(Get $get) => $get('provinsi') ? City::where('province_code', $get('provinsi'))->pluck('name', 'code') : [])
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(function (Set $set) {
+                                            $set('kecamatan', null);
+                                            $set('desa', null);
+                                        }),
+
+                                    Select::make('kecamatan')
+                                        ->label('Kecamatan')
+                                        ->options(fn(Get $get) => $get('kabupaten') ? District::where('city_code', $get('kabupaten'))->pluck('name', 'code') : [])
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(fn(Set $set) => $set('desa', null)),
+
+                                    Select::make('desa')
+                                        ->label('Desa / Kelurahan')
+                                        ->options(fn(Get $get) => $get('kecamatan') ? Village::where('district_code', $get('kecamatan'))->pluck('name', 'code') : [])
+                                        ->searchable(),
+                                ]),
+
+                                Textarea::make('address')
+                                    ->label('Alamat Lengkap (Jalan, RT/RW)')
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                            ]),
+
+                        // ====================================================
+                        // TAB 3: DOKUMEN
+                        // ====================================================
+                        Tabs\Tab::make('Dokumen & Berkas')
+                            ->icon('heroicon-o-folder')
+                            ->hidden(fn(Get $get) => $get('role') !== 'pendamping')
+                            ->schema([
+                                // Info Bank
+                                Section::make('Info Bank & Pendidikan')
+                                    ->schema([
+                                        TextInput::make('nama_bank'),
+                                        TextInput::make('nomor_rekening'),
+                                        TextInput::make('pendidikan_terakhir'),
+                                        TextInput::make('nama_instansi')->label('Instansi Pendidikan'),
+                                    ])->columns(2),
+
+                                // Panggil Schema Dokumen Statis dari Model User
+                                Group::make(User::getDokumenPendampingFormSchema())
+                                    ->columnSpanFull(),
+                            ]),
+                    ])
+                    ->columnSpanFull()
+                    ->persistTabInQueryString(),
+            ]);
+    }
 
     public static function table(Table $table): Table
     {
@@ -66,6 +212,16 @@ class PendampingResource extends Resource
                 Tables\Actions\ViewAction::make()
                     ->label('Detail')
                     ->color('info'),
+
+                // =========================================================
+                // 2. TOMBOL EDIT (RESTRICTED)
+                // =========================================================
+                Tables\Actions\EditAction::make()
+                    ->label('Edit')
+                    ->color('warning')
+                    ->slideOver()
+                    // Hanya Tampil untuk Admin & SuperAdmin
+                    ->visible(fn() => Auth::user()->isAdmin() || Auth::user()->isSuperAdmin()),
             ]);
     }
 
@@ -95,6 +251,12 @@ class PendampingResource extends Resource
             || Auth::user()->isKoordinator();
     }
 
+    // Edit dikontrol via Action Button di table, tapi method ini harus true/false based on logic
+    public static function canEdit($record): bool
+    {
+        return Auth::user()->isAdmin() || Auth::user()->isSuperAdmin();
+    }
+
     // Matikan fitur Create (Input pendamping tetap dari menu User biasa)
     public static function canCreate(): bool
     {
@@ -119,16 +281,10 @@ class PendampingResource extends Resource
     {
         return $infolist
             ->schema([
-                // Grid Utama: 3 Kolom
                 InfolistGrid::make(3)
                     ->schema([
-
-                        // ========================================================
-                        // KOLOM KIRI (SPAN 2)
-                        // ========================================================
+                        // KOLOM KIRI (Data Wilayah & Bank)
                         InfolistGroup::make([
-
-                            // 1. DATA WILAYAH
                             InfolistSection::make('Wilayah Kerja / Domisili')
                                 ->icon('heroicon-o-map')
                                 ->schema([
@@ -139,7 +295,6 @@ class PendampingResource extends Resource
                                     TextEntry::make('village.name')->label('Desa/Kelurahan'),
                                 ])->columns(2),
 
-                            // 2. INFORMASI BANK
                             InfolistSection::make('Informasi Bank & Pendidikan')
                                 ->icon('heroicon-o-academic-cap')
                                 ->visible(fn($record) => $record->role === 'pendamping')
@@ -149,38 +304,29 @@ class PendampingResource extends Resource
                                     TextEntry::make('pendidikan_terakhir')->badge()->color('info'),
                                     TextEntry::make('nama_instansi')->label('Sekolah/Kampus'),
                                 ])->columns(2),
-
                         ])->columnSpan(['default' => 3, 'lg' => 2]),
 
-                        // ========================================================
-                        // KOLOM KANAN (SPAN 1) - Akun & SiHalal
-                        // ========================================================
+                        // KOLOM KANAN (Profil & Akun)
                         InfolistGroup::make([
-
-                            // 1. AKUN PENGGUNA (Profil Singkat)
                             InfolistSection::make('Profil Akun')
                                 ->icon('heroicon-o-user')
                                 ->schema([
                                     TextEntry::make('name')
-                                        ->label('Nama') // Label dipersingkat agar tidak sempit
+                                        ->label('Nama')
                                         ->weight('bold')
                                         ->size(TextEntry\TextEntrySize::Large),
-
                                     TextEntry::make('email')
                                         ->icon('heroicon-m-envelope')
                                         ->copyable(),
-
                                     TextEntry::make('phone')
                                         ->label('WhatsApp')
                                         ->icon('heroicon-m-phone')
                                         ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                         ->color('success'),
-
-                                    InfolistGrid::make(2)->schema([ // Grid kecil di dalam agar rapi
+                                    InfolistGrid::make(2)->schema([
                                         TextEntry::make('role')->badge()->color('warning'),
                                         TextEntry::make('status')->badge(),
                                     ]),
-
                                     TextEntry::make('created_at')
                                         ->label('Terdaftar')
                                         ->since()
@@ -188,144 +334,62 @@ class PendampingResource extends Resource
                                         ->color('gray'),
                                 ]),
 
-                            // 2. AKUN SIHALAL (DIPISAH SESUAI REQUEST)
                             InfolistSection::make('Akses SiHalal')
                                 ->icon('heroicon-o-key')
-                                // ->color('primary') // Warna header berbeda biar mencolok
                                 ->schema([
-                                    TextEntry::make('akun_halal')
-                                        ->label('Username')
-                                        ->icon('heroicon-m-user')
-                                        ->copyable()
-                                        ->weight('medium'),
-
-                                    TextEntry::make('pass_akun_halal')
-                                        ->label('Password')
-                                        ->icon('heroicon-m-lock-closed') // Icon gembok
-                                        ->copyable()
-                                        ->fontFamily('mono') // Font monospace agar huruf l/1/I jelas
-                                        ->color('danger'), // Warna merah agar hati-hati
+                                    TextEntry::make('akun_halal')->label('Username')->copyable()->weight('medium'),
+                                    TextEntry::make('pass_akun_halal')->label('Password')->copyable()->fontFamily('mono')->color('danger'),
                                 ]),
-
-                        ])->columnSpan(['default' => 3, 'lg' => 1]), // Ambil 1 bagian (Sisa)
-
-                    ]), // End Grid Utama
+                        ])->columnSpan(['default' => 3, 'lg' => 1]),
+                    ]),
 
                 // ========================================================
-                // BAGIAN BAWAH: DOKUMEN (FULL WIDTH / LEBAR PENUH)
+                // BAGIAN BAWAH: DOKUMEN (Menggunakan Route Proxy)
                 // ========================================================
-                // Section ini ditaruh di LUAR Grid agar bisa panjang ke samping
                 InfolistSection::make('Berkas Dokumen Pendamping')
                     ->icon('heroicon-o-folder-open')
                     ->visible(fn($record) => $record->role === 'pendamping')
                     ->schema([
-                        // A. PAS FOTO (Pakai Base64)
-                        ImageEntry::make('file_pas_foto')
-                            ->label('Pas Foto')
-                            ->disk(null) // Matikan disk agar membaca state base64
-                            ->state(fn($record) => self::getBase64Image($record->file_pas_foto))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-cover aspect-square rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_pas_foto')),
-
-                        // B. BUKU REKENING (Pakai Base64)
-                        ImageEntry::make('file_buku_rekening')
-                            ->label('Buku Rekening')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_buku_rekening))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_buku_rekening')),
-
-                        // C. KTP (Pakai Base64)
-                        ImageEntry::make('file_ktp')
-                            ->label('KTP')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_ktp))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_ktp')),
-
-                        // D. IJAZAH (Pakai Base64)
-                        ImageEntry::make('file_ijazah')
-                            ->label('Ijazah Terakhir')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_ijazah))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_ijazah')),
+                        // Panggil helper function yang kita buat di bawah
+                        self::getProxyImageEntry('file_pas_foto', 'Pas Foto'),
+                        self::getProxyImageEntry('file_buku_rekening', 'Buku Rekening'),
+                        self::getProxyImageEntry('file_ktp', 'KTP'),
+                        self::getProxyImageEntry('file_ijazah', 'Ijazah'),
                     ])
                     ->columns([
                         'default' => 1,
-                        'sm' => 2, // Tampil 2 kolom agar rapi
-                        'md' => 2,
-                        'xl' => 4, // Tampil 4 kolom di layar besar
-                    ])
-                    ->columnSpanFull(),
+                        'sm' => 2,
+                        'xl' => 4,
+                    ]),
             ]);
     }
 
-    // --- PASTIKAN 2 FUNGSI INI ADA DI BAWAH INFOLIST (DALAM CLASS RESOURCE) ---
-
-    protected static function getBase64Image($path)
+    /**
+     * Helper untuk menampilkan Gambar via Proxy Route di Infolist
+     * Menggunakan TextEntry + HTML agar lebih ringan dan fleksibel.
+     */
+    protected static function getProxyImageEntry(string $field, string $label): TextEntry
     {
-        // 1. Validasi Input
-        if (! $path) return null;
-        if (is_array($path)) $path = array_shift($path);
-        if (! is_string($path)) return null;
-
-        try {
-            $disk = \Illuminate\Support\Facades\Storage::disk('google');
-
-            if ($disk->exists($path)) {
-                // Ambil konten raw file
-                $content = $disk->get($path);
-
-                // Ambil ekstensi
-                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
-                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
-                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
-                $mime = match ($extension) {
-                    'png' => 'image/png',
-                    'jpg', 'jpeg' => 'image/jpeg',
-                    'webp' => 'image/webp',
-                    'gif' => 'image/gif',
-                    default => $disk->mimeType($path) // Fallback ke deteksi driver
-                };
-
-                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
-                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
-                    if (extension_loaded('imagick')) {
-                        try {
-                            $imagick = new \Imagick();
-                            $imagick->readImageBlob($content);
-                            $imagick->setImageFormat('jpeg');
-                            $content = $imagick->getImageBlob();
-                            $mime = 'image/jpeg';
-                            $imagick->clear();
-                            $imagick->destroy();
-                        } catch (\Exception $e) {
-                            // Jika convert gagal, biarkan apa adanya (atau return null)
-                        }
-                    }
-                }
-
-                // Return string Base64 yang valid
-                return 'data:' . $mime . ';base64,' . base64_encode($content);
-            }
-        } catch (\Exception $e) {
-            // Log error jika perlu: Log::error($e->getMessage());
-            return null;
-        }
-
-        return null;
-    }
-
-    protected static function getOpenAction($columnName)
-    {
-        return Action::make('open_' . $columnName)
-            ->icon('heroicon-m-arrow-top-right-on-square')
-            ->tooltip('Buka file asli')
-            ->url(fn($record) => $record->$columnName ? Storage::disk('google')->url($record->$columnName) : null)
-            ->openUrlInNewTab()
-            ->visible(fn($record) => $record->$columnName);
+        return TextEntry::make($field)
+            ->label($label)
+            ->formatStateUsing(fn($state) => empty($state) ? '-' : new HtmlString("
+                <div class='relative group overflow-hidden rounded-lg border border-gray-200 shadow-sm bg-gray-50'>
+                    <img src='" . route('drive.image', ['path' => $state]) . "' 
+                         alt='$label' 
+                         class='w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105' 
+                         loading='lazy'>
+                    
+                    <a href='" . route('drive.image', ['path' => $state]) . "' 
+                       target='_blank' 
+                       class='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-white font-bold tracking-wide no-underline'>
+                       <svg xmlns='http://www.w3.org/2000/svg' class='h-6 w-6 mr-2' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                          <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M15 12a3 3 0 11-6 0 3 3 0 016 0z' />
+                          <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                       </svg>
+                       LIHAT
+                    </a>
+                </div>
+            "))
+            ->columnSpan(1);
     }
 }

@@ -201,10 +201,11 @@ class AnggotaResource extends Resource
                                     // Parameter ke-5 (isSmall) dan ke-6 (isRequired) pakai default
                                     self::getUploadGroup('file_ktp', 'KTP', 'ktp', $form),
 
-                                    // 2. NIB
+                                    // 2. NIB (BISA PDF atau IMAGE)
                                     // Parameter 5: false (ukuran normal/tidak small)
                                     // Parameter 6: false (TIDAK WAJIB / OPTIONAL)
-                                    self::getUploadGroup('file_foto_nib', 'NIB', 'nib', $form, false, false),
+                                    // Param 7 (Allow PDF): TRUE <<-- Ini kuncinya
+                                    self::getUploadGroup('file_foto_nib', 'NIB', 'nib', $form, false, false, true),
 
                                     // 3. PRODUK
                                     self::getUploadGroup('file_foto_produk', 'Produk', 'produk', $form, true),
@@ -664,36 +665,70 @@ class AnggotaResource extends Resource
 
     // --- HELPER FUNCTION AGAR KODE RAPI (REUSABLE COMPONENT) ---
     // Saya memindahkan logika upload yang berulang ke fungsi ini agar schema form bersih
-    public static function getUploadGroup($field, $label, $prefix, $form, $isSmall = false, $isRequired = true)
+    public static function getUploadGroup($field, $label, $prefix, $form, $isSmall = false, $isRequired = true, $allowPdf = false)
     {
         return Forms\Components\Group::make([
             Forms\Components\Placeholder::make('preview_' . $prefix)
                 ->hidden(fn($record) => empty($record?->$field))
-                ->content(fn($record) => new \Illuminate\Support\HtmlString("
+                ->content(fn($record) => new \Illuminate\Support\HtmlString(
+                    // Logic: Cek ekstensi file, jika PDF tampilkan icon, jika gambar tampilkan preview
+                    (Str::endsWith($record->$field ?? '', '.pdf'))
+                        ? "
+                    <div class='mb-2 p-3 border rounded bg-gray-50 flex items-center gap-4'>
+                         <div class='bg-red-100 text-red-600 p-2 rounded'>
+                            <svg class='w-8 h-8' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 2H7a2 2 0 00-2 2v14a2 2 0 002 2z'></path></svg>
+                         </div>
+                        <div class='text-xs text-gray-500'>
+                            <p class='font-bold text-gray-700'>Dokumen PDF</p>
+                            <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' target='_blank' class='text-primary-600 underline font-bold'>Download / Lihat PDF</a>
+                        </div>
+                    </div>
+                    "
+                        : "
                     <div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
-                        <img src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' style='height: 80px; border-radius: 4px;' loading='lazy'>
+                        <img src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' style='height: 80px; border-radius: 4px; object-fit: cover;' loading='lazy'>
                         <div class='text-xs text-gray-500'>
                             <p class='font-bold text-success-600'>✓ Terupload</p>
                             <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' target='_blank' class='text-primary-600 underline'>Lihat Penuh</a>
                         </div>
                     </div>
-                ")),
+                    "
+                )),
 
+            // --- COMPONENT UPLOAD ---
             Forms\Components\FileUpload::make($field)
                 ->label(fn($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
                 ->disk('google')
                 ->visibility('private')
-                ->image()
                 ->fetchFileInformation(false)
-                ->maxSize(8192)
-                ->imageResizeMode('cover')
-                ->imageResizeTargetWidth($isSmall ? '800' : '1024')
-                ->uploadingMessage('Mengupload & Mengompres...')
+                ->maxSize(8192) // 8MB
+                ->uploadingMessage('Mengupload...')
                 ->formatStateUsing(fn() => null)
                 ->dehydrated(fn($state) => filled($state))
+
+                // 1. LOGIC DIREKTORI (Sesuai Permintaan)
+                // Folder: dokumen_anggota_{nama_pendamping}/{nama_pelaku_usaha}
                 ->directory(fn(Get $get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+
+                // 2. LOGIC NAMA FILE
+                // File: prefix_nama-pelaku-usaha_timestamp.ext
                 ->getUploadedFileNameForStorageUsing(fn($file, Get $get) => $prefix . '_' . Str::slug($get('name') ?? 'tanpa-nama') . '_' . time() . '.' . $file->getClientOriginalExtension())
-                // Wajib jika: (Parameter isRequired TRUE) DAN (Halaman adalah CreateRecord)
+
+                // 3. LOGIC ALLOW PDF VS IMAGE ONLY
+                ->when(
+                    $allowPdf,
+                    // Jika PDF diperbolehkan
+                    fn($component) => $component
+                        ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'])
+                        ->helperText('Boleh PDF atau Foto (JPG/PNG).'),
+                    // Jika Hanya Gambar (Default)
+                    fn($component) => $component
+                        ->image()
+                        ->imageResizeTargetWidth($isSmall ? '800' : '1024')
+                        ->helperText('Format JPG/PNG.')
+                )
+
+                // 4. LOGIC WAJIB (Hanya saat create)
                 ->required(
                     fn($livewire) =>
                     $isRequired && ($livewire instanceof \Filament\Resources\Pages\CreateRecord)

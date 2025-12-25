@@ -18,19 +18,13 @@ use Laravolt\Indonesia\Models\District;
 use Laravolt\Indonesia\Models\Village;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
-use Illuminate\Support\Collection;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Group;
-use Filament\Forms\Components\Section;
-use Filament\Infolists;
-use Filament\Infolists\Components\Actions\Action;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\ImageEntry; // Jika ada foto
-use Illuminate\Support\Facades\Storage;
 use Filament\Infolists\Components\Grid as InfolistGrid;       // <--- PENTING: Pakai Alias
 use Filament\Infolists\Components\Group as InfolistGroup;     // <--- PENTING: Pakai Alias
 use Filament\Infolists\Components\Section as InfolistSection;
+use Filament\Forms\Components\Tabs;
+use Illuminate\Support\HtmlString;
 
 class UserResource extends Resource
 {
@@ -42,143 +36,147 @@ class UserResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
-            ->columns(3) // Kita bagi layar jadi 3 bagian grid
             ->schema([
 
-                // ============================================================
-                // KOLOM KIRI (SPAN 2) - Wilayah & Dokumen
-                // ============================================================
-                Group::make()
-                    ->columnSpan(['lg' => 2]) // Ambil 2 bagian dari 3
-                    ->schema([
+                // KITA BUNGKUS SEMUA DALAM TABS
+                Tabs::make('User Data')
+                    ->tabs([
 
-                        // 1. DATA WILAYAH
-                        Section::make('Wilayah Kerja / Domisili')
-                            ->icon('heroicon-o-map')
-                            ->schema([
-                                Forms\Components\Textarea::make('address')
-                                    ->label('Alamat Lengkap')
-                                    ->rows(2)
-                                    ->columnSpanFull(),
-
-                                Forms\Components\Select::make('provinsi')
-                                    ->label('Provinsi')
-                                    ->options(Province::pluck('name', 'code'))
-                                    ->searchable()
-                                    ->live()
-                                    ->afterStateUpdated(function (Set $set) {
-                                        $set('kabupaten', null);
-                                        $set('kecamatan', null);
-                                        $set('desa', null);
-                                    }),
-
-                                Forms\Components\Select::make('kabupaten')
-                                    ->label('Kabupaten / Kota')
-                                    ->options(function (Get $get) {
-                                        $prov = $get('provinsi');
-                                        if (!$prov) return Collection::empty();
-                                        return City::where('province_code', $prov)->pluck('name', 'code');
-                                    })
-                                    ->searchable()
-                                    ->live()
-                                    ->afterStateUpdated(function (Set $set) {
-                                        $set('kecamatan', null);
-                                        $set('desa', null);
-                                    }),
-
-                                Forms\Components\Select::make('kecamatan')
-                                    ->label('Kecamatan')
-                                    ->options(function (Get $get) {
-                                        $kab = $get('kabupaten');
-                                        if (!$kab) return Collection::empty();
-                                        return District::where('city_code', $kab)->pluck('name', 'code');
-                                    })
-                                    ->searchable()
-                                    ->live()
-                                    ->afterStateUpdated(fn(Set $set) => $set('desa', null))
-                                    ->required(),
-
-                                Forms\Components\Select::make('desa')
-                                    ->label('Desa / Kelurahan')
-                                    ->options(function (Get $get) {
-                                        $kec = $get('kecamatan');
-                                        if (!$kec) return Collection::empty();
-                                        return Village::where('district_code', $kec)->pluck('name', 'code');
-                                    })
-                                    ->searchable(),
-                            ])->columns(2),
-
-                        // 2. DOKUMEN PENDAMPING (Panggil Schema Statis)
-                        Group::make(User::getDokumenPendampingFormSchema())
-                            ->visible(fn(Get $get) => $get('role') === 'pendamping'),
-
-                        // 3. DATA TAMBAHAN (Read Only)
-                        Section::make('Informasi Bank & Pendidikan')
-                            ->icon('heroicon-o-academic-cap')
-                            ->collapsible()
-                            ->collapsed() // Tutup default biar gak menuhin layar
-                            ->visible(fn(Get $get) => $get('role') === 'pendamping')
-                            ->schema([
-                                Forms\Components\TextInput::make('nama_bank')->disabled(),
-                                Forms\Components\TextInput::make('nomor_rekening')->disabled(),
-                                Forms\Components\TextInput::make('pendidikan_terakhir')->disabled(),
-                                Forms\Components\TextInput::make('nama_instansi')->label('Sekolah/Kampus')->disabled(),
-                            ])->columns(2),
-                    ]),
-
-                // ============================================================
-                // KOLOM KANAN (SPAN 1) - Akun & Login
-                // ============================================================
-                Group::make()
-                    ->columnSpan(['lg' => 1]) // Ambil 1 bagian dari 3
-                    ->schema([
-
-                        Section::make('Akun Pengguna')
+                        // ====================================================
+                        // TAB 1: AKUN & LOGIN (Data Paling Penting)
+                        // ====================================================
+                        Tabs\Tab::make('Akun & Login')
                             ->icon('heroicon-o-user-circle')
                             ->schema([
-                                Forms\Components\TextInput::make('name')
-                                    ->required()
-                                    ->label('Nama Lengkap'),
+                                Forms\Components\Grid::make(2)->schema([
+                                    Forms\Components\TextInput::make('name')
+                                        ->label('Nama Lengkap')
+                                        ->required(),
 
-                                Forms\Components\TextInput::make('email')
-                                    ->email()
-                                    ->unique(ignoreRecord: true)
-                                    ->required(),
+                                    Forms\Components\TextInput::make('email')
+                                        ->email()
+                                        ->unique(ignoreRecord: true)
+                                        ->required(),
 
-                                Forms\Components\TextInput::make('phone')
-                                    ->label('No HP')
-                                    ->tel(),
+                                    Forms\Components\TextInput::make('phone')
+                                        ->label('No HP / WA')
+                                        ->tel(),
 
-                                Forms\Components\TextInput::make('password')
-                                    ->password()
-                                    ->dehydrateStateUsing(fn($state) => Hash::make($state))
-                                    ->dehydrated(fn($state) => filled($state))
-                                    ->required(fn(string $context): bool => $context === 'create'),
-
-                                // SELECT ROLE
-                                Forms\Components\Select::make('role')
-                                    ->label('Role User')
-                                    ->live() // PENTING: Agar form dokumen di kiri langsung muncul saat dipilih
-                                    ->options(function () {
-                                        $user = Auth::user();
-                                        // Logika opsi role Anda...
-                                        if ($user && $user->isSuperAdmin()) {
+                                    Forms\Components\Select::make('role')
+                                        ->label('Role User')
+                                        ->live()
+                                        ->options(function () {
+                                            $user = Auth::user();
+                                            if ($user && $user->isSuperAdmin()) {
+                                                return [
+                                                    'admin' => 'Admin',
+                                                    'koordinator' => 'Koordinator Kecamatan',
+                                                    'pendamping' => 'Pendamping',
+                                                ];
+                                            }
                                             return [
-                                                'admin' => 'Admin',
                                                 'koordinator' => 'Koordinator Kecamatan',
                                                 'pendamping' => 'Pendamping',
                                             ];
-                                        }
-                                        return [
-                                            'koordinator' => 'Koordinator Kecamatan',
-                                            'pendamping' => 'Pendamping',
-                                        ];
-                                    })
-                                    ->required()
-                                    ->default('pendamping'),
-                            ]),
-                    ]),
+                                        })
+                                        ->required()
+                                        ->default('pendamping'),
+                                ]),
 
+                                Forms\Components\Section::make('Keamanan')
+                                    ->description('Isi hanya jika ingin mengubah password user.')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('password')
+                                            ->password()
+                                            ->revealable()
+                                            // Hash password sebelum disimpan
+                                            ->dehydrateStateUsing(fn($state) => Hash::make($state))
+                                            // Hanya update jika field diisi (penting untuk Edit)
+                                            ->dehydrated(fn($state) => filled($state))
+                                            // Wajib hanya saat Create
+                                            ->required(fn(string $context): bool => $context === 'create'),
+                                    ]),
+                            ]),
+
+                        // ====================================================
+                        // TAB 2: DATA WILAYAH (Jarang diedit Admin)
+                        // ====================================================
+                        Tabs\Tab::make('Wilayah & Domisili')
+                            ->icon('heroicon-o-map')
+                            ->schema([
+                                Forms\Components\Grid::make(2)->schema([
+                                    Forms\Components\Select::make('provinsi')
+                                        ->label('Provinsi')
+                                        ->options(Province::pluck('name', 'code'))
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(function (Set $set) {
+                                            $set('kabupaten', null);
+                                            $set('kecamatan', null);
+                                            $set('desa', null);
+                                        }),
+
+                                    Forms\Components\Select::make('kabupaten')
+                                        ->label('Kabupaten / Kota')
+                                        ->options(
+                                            fn(Get $get) =>
+                                            $get('provinsi') ? City::where('province_code', $get('provinsi'))->pluck('name', 'code') : []
+                                        )
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(function (Set $set) {
+                                            $set('kecamatan', null);
+                                            $set('desa', null);
+                                        }),
+
+                                    Forms\Components\Select::make('kecamatan')
+                                        ->label('Kecamatan')
+                                        ->options(
+                                            fn(Get $get) =>
+                                            $get('kabupaten') ? District::where('city_code', $get('kabupaten'))->pluck('name', 'code') : []
+                                        )
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(fn(Set $set) => $set('desa', null)),
+
+                                    Forms\Components\Select::make('desa')
+                                        ->label('Desa / Kelurahan')
+                                        ->options(
+                                            fn(Get $get) =>
+                                            $get('kecamatan') ? Village::where('district_code', $get('kecamatan'))->pluck('name', 'code') : []
+                                        )
+                                        ->searchable(),
+                                ]),
+
+                                Forms\Components\Textarea::make('address')
+                                    ->label('Alamat Lengkap (Jalan, RT/RW)')
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                            ]),
+
+                        // ====================================================
+                        // TAB 3: DOKUMEN (Hanya muncul jika Role = Pendamping)
+                        // ====================================================
+                        Tabs\Tab::make('Dokumen & Berkas')
+                            ->icon('heroicon-o-folder')
+                            // Tab ini hilang otomatis jika bukan pendamping
+                            ->hidden(fn(Get $get) => $get('role') !== 'pendamping')
+                            ->schema([
+
+                                // Data Bank (Read Only buat Admin agar tidak salah edit)
+                                Forms\Components\Section::make('Info Bank')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('nama_bank'),
+                                        Forms\Components\TextInput::make('nomor_rekening'),
+                                    ])->columns(2),
+
+                                // Panggil Schema Dokumen Statis Anda
+                                Forms\Components\Group::make(User::getDokumenPendampingFormSchema())
+                                    ->columnSpanFull(),
+                            ]),
+                    ])
+                    ->columnSpanFull() // Agar Tabs memenuhi lebar modal/halaman
+                    ->persistTabInQueryString(), // Agar pas refresh tetap di tab yg sama
             ]);
     }
 
@@ -355,7 +353,7 @@ class UserResource extends Resource
 
                                     TextEntry::make('role')
                                         ->badge()
-                                        ->color('warning'), // Asumsi role pendamping
+                                        ->color('warning'),
 
                                     TextEntry::make('status')
                                         ->badge(),
@@ -370,118 +368,52 @@ class UserResource extends Resource
                     ]), // tutup grid utama
 
                 // ========================================================
-                // BAGIAN BAWAH: DOKUMEN (FULL WIDTH / LEBAR PENUH)
+                // BAGIAN BAWAH: DOKUMEN (Menggunakan Route Proxy)
                 // ========================================================
-                // Section ini ditaruh di LUAR Grid agar bisa panjang ke samping
                 InfolistSection::make('Berkas Dokumen Pendamping')
                     ->icon('heroicon-o-folder-open')
                     ->visible(fn($record) => $record->role === 'pendamping')
                     ->schema([
-                        // A. PAS FOTO (Pakai Base64)
-                        ImageEntry::make('file_pas_foto')
-                            ->label('Pas Foto')
-                            ->disk(null) // Matikan disk agar membaca state base64
-                            ->state(fn($record) => self::getBase64Image($record->file_pas_foto))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-cover aspect-square rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_pas_foto')),
-
-                        // B. BUKU REKENING (Pakai Base64)
-                        ImageEntry::make('file_buku_rekening')
-                            ->label('Buku Rekening')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_buku_rekening))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_buku_rekening')),
-
-                        // C. KTP (Pakai Base64)
-                        ImageEntry::make('file_ktp')
-                            ->label('KTP')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_ktp))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_ktp')),
-
-                        // D. IJAZAH (Pakai Base64)
-                        ImageEntry::make('file_ijazah')
-                            ->label('Ijazah Terakhir')
-                            ->disk(null)
-                            ->state(fn($record) => self::getBase64Image($record->file_ijazah))
-                            ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-64 object-contain rounded-lg shadow-md border border-gray-200'])
-                            ->hintAction(self::getOpenAction('file_ijazah')),
+                        // Panggil helper function getProxyImageEntry
+                        self::getProxyImageEntry('file_pas_foto', 'Pas Foto'),
+                        self::getProxyImageEntry('file_buku_rekening', 'Buku Rekening'),
+                        self::getProxyImageEntry('file_ktp', 'KTP'),
+                        self::getProxyImageEntry('file_ijazah', 'Ijazah'),
                     ])
                     ->columns([
                         'default' => 1,
                         'sm' => 2, // Tampil 2 kolom agar rapi
-                    ])
-                    ->columnSpanFull(),
+                        'xl' => 4,
+                    ]),
             ]);
     }
 
-    // --- PASTIKAN 2 FUNGSI INI ADA DI BAWAH INFOLIST (DALAM CLASS RESOURCE) ---
-
-    protected static function getBase64Image($path)
+    /**
+     * Helper untuk menampilkan Gambar via Proxy Route di Infolist
+     * Copas fungsi ini ke dalam class UserResource
+     */
+    protected static function getProxyImageEntry(string $field, string $label): TextEntry
     {
-        // 1. Validasi Input
-        if (! $path) return null;
-        if (is_array($path)) $path = array_shift($path);
-        if (! is_string($path)) return null;
-
-        try {
-            $disk = \Illuminate\Support\Facades\Storage::disk('google');
-
-            if ($disk->exists($path)) {
-                // Ambil konten raw file
-                $content = $disk->get($path);
-
-                // Ambil ekstensi
-                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-                // --- PERBAIKAN UTAMA DISINI (FIX PNG & JPG) ---
-                // Jangan percaya 100% pada $disk->mimeType(), sering meleset di GDrive.
-                // Kita tentukan manual berdasarkan ekstensi agar browser tidak bingung.
-                $mime = match ($extension) {
-                    'png' => 'image/png',
-                    'jpg', 'jpeg' => 'image/jpeg',
-                    'webp' => 'image/webp',
-                    'gif' => 'image/gif',
-                    default => $disk->mimeType($path) // Fallback ke deteksi driver
-                };
-
-                // --- LOGIKA KHUSUS HEIC (Tetap pertahankan) ---
-                if ($extension === 'heic' || $mime === 'image/heic' || $mime === 'image/heif') {
-                    if (extension_loaded('imagick')) {
-                        try {
-                            $imagick = new \Imagick();
-                            $imagick->readImageBlob($content);
-                            $imagick->setImageFormat('jpeg');
-                            $content = $imagick->getImageBlob();
-                            $mime = 'image/jpeg';
-                            $imagick->clear();
-                            $imagick->destroy();
-                        } catch (\Exception $e) {
-                            // Jika convert gagal, biarkan apa adanya (atau return null)
-                        }
-                    }
-                }
-
-                // Return string Base64 yang valid
-                return 'data:' . $mime . ';base64,' . base64_encode($content);
-            }
-        } catch (\Exception $e) {
-            // Log error jika perlu: Log::error($e->getMessage());
-            return null;
-        }
-
-        return null;
-    }
-
-    protected static function getOpenAction($columnName)
-    {
-        return Action::make('open_' . $columnName)
-            ->icon('heroicon-m-arrow-top-right-on-square')
-            ->tooltip('Buka file asli')
-            ->url(fn($record) => $record->$columnName ? Storage::disk('google')->url($record->$columnName) : null)
-            ->openUrlInNewTab()
-            ->visible(fn($record) => $record->$columnName);
+        return TextEntry::make($field)
+            ->label($label)
+            ->formatStateUsing(fn($state) => empty($state) ? '-' : new HtmlString("
+                <div class='relative group overflow-hidden rounded-lg border border-gray-200 shadow-sm bg-gray-50'>
+                    <img src='" . route('drive.image', ['path' => $state]) . "' 
+                         alt='$label' 
+                         class='w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105' 
+                         loading='lazy'>
+                    
+                    <a href='" . route('drive.image', ['path' => $state]) . "' 
+                       target='_blank' 
+                       class='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-white font-bold tracking-wide no-underline'>
+                       <svg xmlns='http://www.w3.org/2000/svg' class='h-6 w-6 mr-2' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                          <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M15 12a3 3 0 11-6 0 3 3 0 016 0z' />
+                          <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                       </svg>
+                       LIHAT
+                    </a>
+                </div>
+            "))
+            ->columnSpan(1);
     }
 }
