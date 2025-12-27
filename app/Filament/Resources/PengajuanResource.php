@@ -464,7 +464,7 @@ class PengajuanResource extends Resource
                                 ->date('d F Y'),
 
                             \Filament\Infolists\Components\TextEntry::make('user.phone')
-                                ->label('No. WhatsApp')
+                                ->label('No. HP/WhatsApp')
                                 ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                 ->color('success')
                                 ->icon('heroicon-m-phone'),

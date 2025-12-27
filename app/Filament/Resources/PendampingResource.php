@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\PendampingResource\Pages;
 use App\Models\User;
+use Carbon\Carbon;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -30,6 +31,9 @@ use Laravolt\Indonesia\Models\Province;
 use Laravolt\Indonesia\Models\City;
 use Laravolt\Indonesia\Models\District;
 use Laravolt\Indonesia\Models\Village;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
+use pxlrbt\FilamentExcel\Exports\ExcelExport;
+use pxlrbt\FilamentExcel\Columns\Column;
 
 class PendampingResource extends Resource
 {
@@ -206,6 +210,46 @@ class PendampingResource extends Resource
                     ->label('Kontak'),
             ])
             ->defaultSort('anggota_binaan_count', 'desc') // Urutkan dari yang terbanyak
+            ->headerActions([
+                // TOMBOL EXPORT (Download Semua / Sesuai Filter)
+                ExportAction::make()
+                    ->label('Export Excel')
+                    ->color('success')
+                    ->exports([
+                        ExcelExport::make()
+                            // --- TAMBAHKAN INI (Filter Wajib) ---
+                            ->modifyQueryUsing(function ($query) {
+                                return $query->where('role', 'pendamping');
+                            })
+                            ->withFilename('Data_Pendamping_' . date('Y-m-d'))
+                            ->withColumns([
+                                // Definisikan Kolom Custom agar Rapi
+                                Column::make('name')->heading('Nama Lengkap'),
+                                Column::make('email')->heading('Email'),
+                                Column::make('phone')->heading('No HP/WA'),
+                                Column::make('role')->heading('Role'),
+
+                                // Data Wilayah (Ambil dari relasi)
+                                Column::make('province.name')->heading('Provinsi'),
+                                Column::make('city.name')->heading('Kabupaten/Kota'),
+                                Column::make('district.name')->heading('Kecamatan'),
+                                Column::make('village.name')->heading('Desa/Kelurahan'),
+                                Column::make('address')->heading('Alamat Lengkap'),
+                                Column::make('pendidikan_terakhir')->heading('Pendidikan Terakhir'),
+
+                                // Data Bank (Penting untuk Laporan Keuangan)
+                                Column::make('nama_bank')->heading('Bank'),
+                                Column::make('nomor_rekening')->heading('No Rekening')->formatStateUsing(fn($state) => ' ' . $state),
+                                Column::make('nama_instansi')->heading('Instansi'),
+
+                                Column::make('akun_halal')->heading('Akun SiHalal'),
+                                Column::make('pass_akun_halal')->heading('Password Akun SiHalal'),
+
+                                Column::make('created_at')->heading('Tanggal Daftar')->formatStateUsing(fn($state) => Carbon::parse($state)->format('d-m-Y H:i')),
+                            ]),
+                    ]),
+
+            ])
             ->actions([
                 // Kita hilangkan tombol Edit/Delete agar menu ini murni untuk monitoring
                 // Jika ingin melihat detail, bisa tambahkan ViewAction
@@ -222,6 +266,13 @@ class PendampingResource extends Resource
                     ->slideOver()
                     // Hanya Tampil untuk Admin & SuperAdmin
                     ->visible(fn() => Auth::user()->isAdmin() || Auth::user()->isSuperAdmin()),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                    // Opsional: Export yang dicentang saja
+                    \pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction::make(),
+                ]),
             ]);
     }
 

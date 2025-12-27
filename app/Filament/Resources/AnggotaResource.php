@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AnggotaResource\Pages;
 use App\Models\Pengajuan;
 use App\Models\User;
+use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Form;
@@ -37,6 +38,8 @@ use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
 use Filament\Forms\Components\Wizard; // Import Wizard
+use pxlrbt\FilamentExcel\Exports\ExcelExport;
+use pxlrbt\FilamentExcel\Columns\Column;
 
 class AnggotaResource extends Resource
 {
@@ -443,10 +446,44 @@ class AnggotaResource extends Resource
                 ]),
             ])
             ->headerActions([
+                // TOMBOL EXPORT
                 ExportAction::make()
-                    ->label('Download Laporan')
+                    ->label('Export Data PU')
                     ->color('success')
-                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()), // Hanya admin yg boleh download
+                    ->exports([
+                        ExcelExport::make()
+                            // --- TAMBAHKAN INI (Filter Wajib) ---
+                            ->modifyQueryUsing(function ($query) {
+                                return $query->where('role', 'member');
+                            })
+                            ->withFilename('Data_Pelaku_Usaha_' . date('Y-m-d'))
+                            ->withColumns([
+                                Column::make('name')->heading('Nama Pelaku Usaha'), // Sesuaikan nama field DB
+                                Column::make('nik')->heading('NIK')->formatStateUsing(fn($state) => ' ' . $state),
+                                // Trik: Tambah spasi di depan agar Excel tidak mengubahnya jadi 3.23E+15
+                                Column::make('tanggal_lahir')->heading('Tanggal Lahir')->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('d-m-Y') : '-'),
+                                Column::make('phone')->heading('No. HP/WhatsApp'),
+
+                                // Wilayah
+                                Column::make('address')->heading('Alamat'),
+                                Column::make('province.name')->heading('Provinsi'),
+                                Column::make('city.name')->heading('Kabupaten'),
+                                Column::make('district.name')->heading('Kecamatan'),
+                                Column::make('district.name')->heading('Kecamatan'),
+                                Column::make('village.name')->heading('Desa'),
+                                Column::make('village.name')->heading('Desa'),
+
+                                // Legalitas Usaha
+                                Column::make('merk_dagang')->heading('Merek Dagang'),
+                                Column::make('mitra_halal')->heading('Mitra Halal'),
+                                Column::make('akun_halal')->heading('Username/Email Akun SiHalal'),
+                                Column::make('pass_akun_halal')->heading('Password Akun SiHalal'),
+
+                                Column::make('latestPengajuan.status_verifikasi')->heading('Status Verifikasi'),
+                                // Jika ada relasi ke Pendamping
+                                Column::make('pendamping.name')->heading('Nama Pendamping'),
+                            ]),
+                    ]),
             ]);
     }
 
