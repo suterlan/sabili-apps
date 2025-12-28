@@ -450,6 +450,7 @@ class AnggotaResource extends Resource
                 ExportAction::make()
                     ->label('Export Data PU')
                     ->color('success')
+                    ->visible(fn() => auth()->user()->isSuperAdmin() || auth()->user()->isAdmin())
                     ->exports([
                         ExcelExport::make()
                             // --- TAMBAHKAN INI (Filter Wajib) ---
