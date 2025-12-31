@@ -15,13 +15,19 @@ class TemplateInvoiceExport implements FromCollection, ShouldAutoSize, WithHeadi
 {
     public function collection()
     {
-        // AMBIL DATA YANG SIAP DITAGIH
-        // Syarat: Status = Sertifikat Diterbitkan DAN Belum punya tagihan
-        return Pengajuan::with(['user', 'pendamping'])
-            ->where('verificator_id', auth()->id()) // <--- PENAMBAHAN KEAMANAN DISINI
+        // 1. Mulai Query Dasar
+        $query = Pengajuan::with(['user', 'pendamping'])
             ->where('status_verifikasi', Pengajuan::STATUS_SERTIFIKAT)
-            ->whereNull('tagihan_id')
-            ->get()
+            ->whereNull('tagihan_id');
+
+        // 2. CEK ROLE: Jika BUKAN superadmin, batasi hanya data miliknya sendiri
+        // Sesuaikan 'super_admin' dengan nama role di database Anda
+        if (! auth()->user()->isSuperAdmin()) {
+            $query->where('verificator_id', auth()->id());
+        }
+
+        // 3. Eksekusi Query
+        return $query->get()
             ->map(function ($item) {
                 return [
                     'nik' => $item->user->nik . ' ', // Paksa string biar angka 0 tidak hilang

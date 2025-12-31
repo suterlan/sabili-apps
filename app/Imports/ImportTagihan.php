@@ -75,12 +75,15 @@ class ImportTagihan implements ToModel, WithHeadingRow
 
         // ==================================================================
         // SECURITY CHECK (PENTING!)
-        // Pastikan Pengajuan ini milik Verifikator yang sedang login
+        // Pastikan Pengajuan ini milik Verifikator yang sedang login kecuali superadmin yang melakukan
         // ==================================================================
-        if ($pengajuan->verificator_id !== auth()->id()) {
+        $isSuperAdmin = auth()->user()->isSuperadmin(); // Cek apakah dia bos besar
+        $isMyData = $pengajuan->verificator_id === auth()->id(); // Cek apakah data milik sendiri
+
+        // Jika BUKAN Superadmin DAN BUKAN Data Sendiri, maka tolak.
+        if (! $isSuperAdmin && ! $isMyData) {
             $this->gagal++;
-            // Opsi: Anda bisa return null diam-diam, atau log kejadian ini.
-            return null;
+            return null; // Skip, Admin A tidak boleh sentuh data Admin B
         }
 
         // ------------------------------------------------------------------
