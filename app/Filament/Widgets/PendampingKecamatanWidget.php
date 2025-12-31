@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Pengajuan;
 use App\Models\User;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -43,12 +44,12 @@ class PendampingKecamatanWidget extends BaseWidget
 
                 // Hitung berapa Pelaku Usaha yang didampingi dia (Total)
                 Tables\Columns\TextColumn::make('anggotas_count')
-                    ->label('Total Binaan')
+                    ->label('Total Binaan PU')
                     ->counts('anggotas') // Menggunakan relasi hasMany 'anggotas' di User Model
                     ->badge()
                     ->color('info'),
 
-                // Hitung berapa pengajuan dari binaannya yang SUDAH SELESAI
+                // Hitung berapa pengajuan dari binaannya yang SUDAH SERTIFIKAT
                 Tables\Columns\TextColumn::make('sertifikat_terbit')
                     ->label('Sertifikat Terbit')
                     ->getStateUsing(function ($record) {
@@ -56,7 +57,33 @@ class PendampingKecamatanWidget extends BaseWidget
                         // Kita cari semua pengajuan milik anggota-anggotanya
                         return \App\Models\Pengajuan::whereHas('user', function ($q) use ($record) {
                             $q->where('pendamping_id', $record->id);
-                        })->where('status_verifikasi', 'Selesai')->count();
+                        })->where('status_verifikasi', Pengajuan::STATUS_SERTIFIKAT)->count();
+                    })
+                    ->badge()
+                    ->color('success'),
+
+                // pengajuan yang sudah terbit invoice
+                Tables\Columns\TextColumn::make('terbit_invoice')
+                    ->label('Terbit Invoice')
+                    ->getStateUsing(function ($record) {
+                        // $record adalah user Pendamping
+                        // Kita cari semua pengajuan milik anggota-anggotanya
+                        return \App\Models\Pengajuan::whereHas('user', function ($q) use ($record) {
+                            $q->where('pendamping_id', $record->id);
+                        })->where('status_verifikasi', Pengajuan::STATUS_INVOICE)->count();
+                    })
+                    ->badge()
+                    ->color('success'),
+
+                // pengajuan yang sudah selesai
+                Tables\Columns\TextColumn::make('selesai')
+                    ->label('Selesai')
+                    ->getStateUsing(function ($record) {
+                        // $record adalah user Pendamping
+                        // Kita cari semua pengajuan milik anggota-anggotanya
+                        return \App\Models\Pengajuan::whereHas('user', function ($q) use ($record) {
+                            $q->where('pendamping_id', $record->id);
+                        })->where('status_verifikasi', Pengajuan::STATUS_SELESAI)->count();
                     })
                     ->badge()
                     ->color('success'),

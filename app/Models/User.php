@@ -8,21 +8,10 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Filament\Forms;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\HtmlString;
 use Laravolt\Indonesia\Models\City;
 use Laravolt\Indonesia\Models\District;
 use Laravolt\Indonesia\Models\Province;
 use Laravolt\Indonesia\Models\Village;
-use Livewire\Features\SupportFileUploads\TemporaryUploadedFile; // Pastikan import ini ada
-use Filament\Forms\Components\Group;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Get;
 
 class User extends Authenticatable implements FilamentUser
 {
@@ -41,12 +30,12 @@ class User extends Authenticatable implements FilamentUser
         'phone',
         'address',
         'role',
-        'pendamping_id',
-        // Kolom Baru Pendamping
+        'status',
+        'akun_halal', // pendamping & pelaku usaha
+        'pass_akun_halal', // pendamping & pelaku usaha
+        // Pendamping Field
         'pass_email_pendamping',
         'alamat_domisili',
-        'akun_halal',
-        'pass_akun_halal',
         'pendidikan_terakhir',
         'nama_instansi',
         'nama_bank',
@@ -55,8 +44,8 @@ class User extends Authenticatable implements FilamentUser
         'file_ijazah',
         'file_pas_foto',
         'file_buku_rekening',
-        'status',
         // Pelaku Usaha Fields
+        'pendamping_id',
         'nik',
         'tanggal_lahir',
         'desa',
@@ -71,6 +60,8 @@ class User extends Authenticatable implements FilamentUser
         'file_foto_bersama',
         'file_foto_nib',
         'file_foto_usaha',
+        // field penugasan admin
+        'assigned_districts',
     ];
 
     /**
@@ -94,7 +85,14 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'tanggal_lahir' => 'date', // atau 'immutable_date'
+            'assigned_districts' => 'array',
         ];
+    }
+
+    // Helper: Cek apakah user punya wilayah tugas
+    public function hasAssignedDistricts(): bool
+    {
+        return ! empty($this->assigned_districts);
     }
 
     // Relasi: User ini punya banyak anggota
@@ -187,7 +185,7 @@ class User extends Authenticatable implements FilamentUser
     {
         // Asumsi: Pelaku usaha punya kolom 'pendamping_id' di tabel users
         // (Jika Anda pakai struktur relasi yang berbeda, sesuaikan di sini)
-        // Jika tidak ada kolom pendamping_id di tabel users, 
+        // Jika tidak ada kolom pendamping_id di tabel users,
         // Anda bisa hitung lewat tabel Pengajuan:
 
         return $this->hasMany(Pengajuan::class, 'pendamping_id');
@@ -220,7 +218,7 @@ class User extends Authenticatable implements FilamentUser
             'file_pas_foto',
             'file_ktp',
             'file_ijazah',       // Opsional: uncomment jika wajib
-            'file_buku_rekening' // Opsional: uncomment jika wajib
+            'file_buku_rekening', // Opsional: uncomment jika wajib
         ];
 
         // Cek Kolom Text
@@ -252,16 +250,16 @@ class User extends Authenticatable implements FilamentUser
         return \Filament\Forms\Components\Group::make([
             // 1. PREVIEW GAMBAR (Custom Preview via Placeholder)
             // Bagian ini sudah benar, menampilkan gambar via Route Proxy
-            \Filament\Forms\Components\Placeholder::make('preview_' . $field)
-                ->hidden(fn($record) => empty($record?->$field))
-                ->content(fn($record) => new \Illuminate\Support\HtmlString("
+            \Filament\Forms\Components\Placeholder::make('preview_'.$field)
+                ->hidden(fn ($record) => empty($record?->$field))
+                ->content(fn ($record) => new \Illuminate\Support\HtmlString("
                     <div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
-                        <img src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' 
+                        <img src='".route('drive.image', ['path' => $record->$field ?? ''])."' 
                              style='height: 80px; width: 80px; object-fit: cover; border-radius: 8px;' 
                              loading='lazy' class='shadow-sm'>
                         <div class='text-xs text-gray-500'>
                             <p class='font-bold text-success-600'>✓ Terupload</p>
-                            <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' 
+                            <a href='".route('drive.image', ['path' => $record->$field ?? ''])."' 
                                target='_blank' 
                                class='text-primary-600 underline hover:text-primary-500'>
                                Lihat Penuh
@@ -272,7 +270,7 @@ class User extends Authenticatable implements FilamentUser
 
             // 2. INPUT FILE (FileUpload)
             \Filament\Forms\Components\FileUpload::make($field)
-                ->label(fn($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
+                ->label(fn ($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
                 ->disk('google')
                 ->visibility('private')
                 ->image()
@@ -284,18 +282,18 @@ class User extends Authenticatable implements FilamentUser
                 ->uploadingMessage('Mengupload...') // 2. Pesan upload
 
                 // 3. TRIK KUNCI: Kosongkan state visual agar Filament tidak mencoba me-load preview di dalam kotak
-                ->formatStateUsing(fn() => null)
+                ->formatStateUsing(fn () => null)
 
                 // 4. Mencegah error database: Hanya simpan jika user benar-benar mengupload file baru
                 // (Karena statenya kita null-kan di atas, kita harus jaga di sini)
-                ->dehydrated(fn($state) => filled($state))
+                ->dehydrated(fn ($state) => filled($state))
                 // ------------------------------------------
 
-                ->directory(fn(\Filament\Forms\Get $get) => 'dokumen_pendamping_' . \Illuminate\Support\Str::slug($get('name') ?? 'temp'))
-                ->getUploadedFileNameForStorageUsing(fn($file) => $prefix . '_' . time() . '.' . $file->getClientOriginalExtension())
+                ->directory(fn (\Filament\Forms\Get $get) => 'dokumen_pendamping_'.\Illuminate\Support\Str::slug($get('name') ?? 'temp'))
+                ->getUploadedFileNameForStorageUsing(fn ($file) => $prefix.'_'.time().'.'.$file->getClientOriginalExtension())
 
                 // Logic Required
-                ->required(fn($record) => $isRequired && empty($record?->$field)),
+                ->required(fn ($record) => $isRequired && empty($record?->$field)),
         ])->columnSpan(1);
     }
 

@@ -5,28 +5,38 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\PengajuanResource\Pages;
 use App\Models\Pengajuan;
 use Filament\Forms;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Actions\Action;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Infolists\Infolist;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class PengajuanResource extends Resource
 {
     protected static ?string $model = Pengajuan::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+
     protected static ?string $navigationLabel = 'Pengajuan';
+
     protected static ?string $modelLabel = 'Progres Pengajuan';
+
     protected static ?string $pluralModelLabel = 'Progres Pengajuan';
+
     protected static ?string $slug = 'pengajuan';
 
     public static function form(Form $form): Form
@@ -40,14 +50,18 @@ class PengajuanResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            // Auto refresh setiap 5 detik agar jika ada antrian baru masuk/diklaim orang lain, tabel update
-            ->poll('5s')
+            // Auto refresh setiap 10 detik agar jika ada antrian baru masuk/diklaim orang lain, tabel update
+            ->poll('10s')
 
             // Agar admin tahu ini pengajuan punya siapa
             ->columns([
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Pelaku Usaha')
                     ->searchable(),
+
+                Tables\Columns\TextColumn::make('user.district.name')
+                    ->label('Kecamatan')
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('pendamping.name')
                     ->label('Pendamping')
@@ -56,23 +70,24 @@ class PengajuanResource extends Resource
                 Tables\Columns\TextColumn::make('status_verifikasi')
                     ->badge()
                     ->color(fn($state) => match ($state) {
-                        // Merah (Error/Masalah)
+                        // Merah (Error/Masalah) perlu revisi
                         Pengajuan::STATUS_NIK_INVALID,
                         Pengajuan::STATUS_UPLOAD_NIB,
                         Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
                         Pengajuan::STATUS_PENGAJUAN_DITOLAK => 'danger',
 
-                        // Kuning (Butuh Tindakan User)
+                        // Kuning (Dalam proses)
                         Pengajuan::STATUS_MENUNGGU,
                         Pengajuan::STATUS_DIPROSES => 'warning',
-
-                        // Biru (Proses Admin)
+                        // Biru (Masih dalam proses tapi selesai diverifikasi, menunggu sertifikat)
                         Pengajuan::STATUS_LOLOS_VERIFIKASI,
                         Pengajuan::STATUS_PENGAJUAN_DIKIRIM => 'info',
 
-                        // Hijau (Berhasil)
+                        // Hijau (Berhasil, menunggu invoice)
                         Pengajuan::STATUS_SERTIFIKAT,
+                        // invoice/tagihan muncul
                         Pengajuan::STATUS_INVOICE,
+                        // semua proses selesai
                         Pengajuan::STATUS_SELESAI => 'success',
 
                         default => 'primary',
@@ -119,7 +134,7 @@ class PengajuanResource extends Resource
                         Notification::make()
                             ->success() // Warna Hijau
                             ->title('Tugas Berhasil Diklaim')
-                            ->body('Pengajuan ini telah masuk ke daftar "Tugas Saya".')
+                            ->body('Pengajuan ini telah masuk ke daftar "Proses"')
                             ->send();
                     }),
 
@@ -132,6 +147,7 @@ class PengajuanResource extends Resource
                     ->visible(function (Pengajuan $record) {
                         // Syarat 1: User login adalah verifikatornya
                         $isMyTask = auth()->id() === $record->verificator_id || auth()->user()->isSuperAdmin();
+
                         return $isMyTask;
                     }),
 
@@ -144,8 +160,8 @@ class PengajuanResource extends Resource
                     ->modalHeading('Lepaskan Tugas?')
                     ->modalDescription(
                         fn(Pengajuan $record) => auth()->user()->isSuperAdmin()
-                            ? "Anda akan melepas tugas milik " . ($record->verificator->name ?? 'Admin') . ". Data kembali ke antrian."
-                            : "Tugas akan dikembalikan ke antrian umum."
+                            ? 'Anda akan melepas tugas milik ' . ($record->verificator->name ?? 'Admin') . '. Data kembali ke antrian.'
+                            : 'Tugas akan dikembalikan ke antrian umum.'
                     )->modalSubmitActionLabel('Ya, Lepaskan')
 
                     // --- LOGIKA SIAPA YANG BOLEH LIHAT ---
@@ -153,13 +169,15 @@ class PengajuanResource extends Resource
                         $user = auth()->user();
 
                         // 1. SYARAT MUTLAK: Harus sudah ada yang klaim
-                        if (is_null($record->verificator_id)) return false;
+                        if (is_null($record->verificator_id)) {
+                            return false;
+                        }
 
                         // 2. Jangan batalkan jika sudah SELESAI/SERTIFIKAT (Bahaya!)
                         if (in_array($record->status_verifikasi, [
                             Pengajuan::STATUS_SELESAI,
                             Pengajuan::STATUS_SERTIFIKAT,
-                            Pengajuan::STATUS_INVOICE
+                            Pengajuan::STATUS_INVOICE,
                         ])) {
                             return false;
                         }
@@ -179,10 +197,10 @@ class PengajuanResource extends Resource
                         if ($activeTab === 'tugas_saya') {
                             return $record->verificator_id === $user->id;
                         }
+
                         // Jika Admin melihat tab 'semua', sembunyikan tombol ini biar aman/bersih
                         return false;
                     })
-
                     // --- LOGIKA EKSEKUSI ---
                     ->action(function (Pengajuan $record) {
                         $oldVerificator = $record->verificator->name ?? 'Admin';
@@ -209,51 +227,76 @@ class PengajuanResource extends Resource
                     }),
 
                 // =========================================================
-                // ACTION EDIT DATA ANGGOTA (PELAKU USAHA) (Email, Pass, NIB, File NIB)
+                // ACTION EDIT DATA ANGGOTA (PELAKU USAHA) (Email, Pass, NIB, File NIB, Akun Sihalal, Pass akun sihalal, merk dagang)
                 // =========================================================
                 Tables\Actions\Action::make('edit_user_data')
                     ->label('Edit')
                     ->icon('heroicon-m-pencil-square')
                     ->color('primary')
-                    ->modalWidth('lg')
+                    ->modalWidth('2xl')
 
                     // Tampilkan tombol ini hanya untuk Verifikator yang sedang memegang tugas ini
                     ->visible(function (Pengajuan $record, $livewire) {
                         $isMyTask = auth()->id() === $record->verificator_id;
                         $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
+
                         return $isMyTask && $bukanTabHistory;
                     })
-
                     // 2. ISI DATA AWAL (PRE-FILL)
                     ->mountUsing(function (Forms\ComponentContainer $form, Pengajuan $record) {
                         $form->fill([
-                            'email'         => $record->user->email,
-                            'pass_email'    => $record->user->pass_email, // Tampilkan password yang bisa dibaca
-                            'nomor_nib'     => $record->user->nomor_nib,
+                            'merk_dagang' => $record->user->merk_dagang, // BARU
+                            'email' => $record->user->email,
+                            'pass_email' => $record->user->pass_email, // Tampilkan password yang bisa dibaca
+                            'akun_halal' => $record->user->akun_halal, // BARU
+                            'pass_akun_halal' => $record->user->pass_akun_halal, // BARU
+                            'nomor_nib' => $record->user->nomor_nib,
                         ]);
                     })
-
                     ->form([
-                        Section::make('Informasi Akun & NIB')
+                        Forms\Components\Section::make('Informasi Usaha & Akun')
                             ->schema([
-                                // --- EMAIL ---
-                                Forms\Components\TextInput::make('email')
-                                    ->label('Email Akun')
-                                    ->email()
+                                // --- MERK DAGANG (BARU) ---
+                                Forms\Components\TextInput::make('merk_dagang')
+                                    ->label('Merk Dagang')
                                     ->required()
-                                    ->unique('users', 'email', ignoreRecord: true, modifyRuleUsing: function ($rule, Pengajuan $record) {
-                                        return $rule->ignore($record->user_id);
-                                    }),
+                                    ->columnSpanFull(), // Agar lebar penuh
 
-                                // --- PASSWORD (PASS EMAIL) ---
-                                // Kita ubah pass_email, nanti di backend otomatis update password hash juga
-                                Forms\Components\TextInput::make('pass_email')
-                                    ->label('Password / Pass Email')
-                                    ->helperText('Mengubah ini akan mengupdate Password Login & Pass Email sekaligus.')
-                                    ->password()
-                                    ->revealable()
-                                    ->dehydrated(fn($state) => filled($state)),
+                                // --- GROUP AKUN EMAIL ---
+                                Forms\Components\Group::make([
+                                    // --- EMAIL ---
+                                    Forms\Components\TextInput::make('email')
+                                        ->label('Email Akun')
+                                        ->email()
+                                        ->required()
+                                        ->unique('users', 'email', ignoreRecord: true, modifyRuleUsing: function ($rule, Pengajuan $record) {
+                                            return $rule->ignore($record->user_id);
+                                        }),
 
+                                    // --- PASSWORD (PASS EMAIL) ---
+                                    // Kita ubah pass_email, nanti di backend otomatis update password hash juga
+                                    Forms\Components\TextInput::make('pass_email')
+                                        ->label('Password / Pass Email')
+                                        ->password()
+                                        ->revealable()
+                                        ->dehydrated(fn($state) => filled($state)),
+                                ])->columns(2),
+
+                                // --- GROUP AKUN SIHALAL (BARU) ---
+                                Forms\Components\Group::make([
+                                    Forms\Components\TextInput::make('akun_halal')
+                                        ->label('Email/User SiHalal')
+                                        ->email(),
+
+                                    Forms\Components\TextInput::make('pass_akun_halal')
+                                        ->label('Password SiHalal')
+                                        ->password()
+                                        ->revealable(),
+                                ])->columns(2),
+                            ]),
+
+                        Forms\Components\Section::make('Dokumen NIB')
+                            ->schema([
                                 // --- NOMOR NIB ---
                                 Forms\Components\TextInput::make('nomor_nib')
                                     ->label('Nomor NIB')
@@ -296,7 +339,7 @@ class PengajuanResource extends Resource
                                     ->uploadingMessage('Mengupload...') // Feedback visual
                                     ->maxSize(5120) // 5MB
                                     ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'])
-                                    //OOptimasi
+                                    // OOptimasi
                                     ->imageResizeTargetWidth('1024')
 
                                     // --- PERBAIKAN KUNCI 1: HILANGKAN LOADING ---
@@ -312,36 +355,41 @@ class PengajuanResource extends Resource
                                     ->getUploadedFileNameForStorageUsing(function ($file, Pengajuan $record) {
                                         $prefix = 'NIB';
                                         $namaPelakuUsaha = Str::slug($record->user->name ?? 'tanpa-nama');
+
                                         return $prefix . '_' . $namaPelakuUsaha . '_' . time() . '.' . $file->getClientOriginalExtension();
                                     }),
-                            ])
+                            ]),
                     ])
                     // 3. PROSES SIMPAN
                     ->action(function (Pengajuan $record, array $data) {
                         $updateData = [
-                            'email'         => $data['email'],
-                            'nomor_nib'     => $data['nomor_nib'],
+                            'merk_dagang' => $data['merk_dagang'], // BARU
+                            'email'       => $data['email'],
+                            'nomor_nib'   => $data['nomor_nib'],
+                            'akun_halal'  => $data['akun_halal'], // BARU
+                            'pass_akun_halal' => $data['pass_akun_halal'], // BARU
                         ];
 
                         // --- PERBAIKAN KUNCI 2: LOGIC SAVE FILE ---
                         // Cek apakah key 'file_foto_nib' ada di array $data
                         // Karena kita pakai 'dehydrated', key ini HANYA akan ada jika user upload file baru.
-                        if (!empty($data['file_foto_nib'])) {
+                        if (! empty($data['file_foto_nib'])) {
                             $updateData['file_foto_nib'] = $data['file_foto_nib'];
                         }
 
                         // Jika pass_email diisi, update pass_email DAN password (hash)
-                        if (!empty($data['pass_email'])) {
+                        if (! empty($data['pass_email'])) {
                             $updateData['pass_email'] = $data['pass_email'];
-                            $updateData['password']   = bcrypt($data['pass_email']);
+                            $updateData['password'] = bcrypt($data['pass_email']);
                         }
 
+                        // Eksekusi Update ke tabel User
                         $record->user->update($updateData);
 
                         Notification::make()
                             ->success()
                             ->title('Data Anggota Diperbarui')
-                            ->body('Email, Password, NIB, dan Dokumen berhasil disimpan.')
+                            ->body('Akun Email, Akun SiHalal, dan dokumen berhasil disimpan.')
                             ->send();
                     }),
 
@@ -359,12 +407,21 @@ class PengajuanResource extends Resource
                         // Syarat 1: User login adalah verifikatornya
                         $isMyTask = auth()->id() === $record->verificator_id;
 
-                        // Syarat 2: BUKAN di tab 'semua'
-                        $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
+                        // Cek Tab
+                        $tab = $livewire->activeTab ?? '';
 
-                        return $isMyTask && $bukanTabHistory;
+                        // Button muncul di tab 'siap_invoice' ATAU tab kerjaan standar
+                        // Tapi JANGAN muncul di tab 'selesai' atau 'semua' (history)
+                        // Dan jangan muncul jika status sudah Invoice/Selesai (sudah final di tahap ini)
+                        $isTabAllowed = in_array($tab, ['tugas_saya', 'revisi', 'proses', 'siap_invoice']);
+
+                        $statusFinal = in_array($record->status_verifikasi, [
+                            Pengajuan::STATUS_INVOICE,
+                            Pengajuan::STATUS_SELESAI,
+                        ]);
+
+                        return $isMyTask && $isTabAllowed && ! $statusFinal;
                     })
-
                     ->form([
                         // --- BAGIAN 3: FORM INPUT VERIFIKASI ---
                         Section::make('Keputusan Verifikasi')
@@ -376,32 +433,151 @@ class PengajuanResource extends Resource
 
                                 Select::make('status_verifikasi')
                                     ->label('Status Baru')
-                                    ->options(Pengajuan::getStatusVerifikasiOptions())
+                                    // Menggunakan opsi yang sudah difilter (Tanpa Invoice/Selesai)
+                                    ->options(function ($livewire) {
+                                        $currentTab = $livewire->activeTab ?? '';
+                                        // JIKA DI TAB 'SIAP INVOICE'
+                                        // Opsinya khusus: Lanjut ke Invoice atau Langsung Selesai
+                                        if ($currentTab === 'siap_invoice') {
+                                            return [
+                                                Pengajuan::STATUS_INVOICE => 'Invoice Diajukan',
+                                                Pengajuan::STATUS_SELESAI => 'Selesai / Lunas',
+                                            ];
+                                        }
+
+                                        // JIKA DI TAB LAIN (Antrian, Tugas Saya, Revisi, Proses)
+                                        // Gunakan opsi standar verifikator (tanpa invoice/selesai)
+                                        return Pengajuan::getOpsiManualVerifikator();
+                                    })
                                     ->required()
                                     ->native(false)
-                                    ->live(),
+                                    ->live() // Penting agar form di bawahnya bisa responsif
+                                    ->afterStateUpdated(function ($state, \Filament\Forms\Set $set) {
+                                        // Opsional: Reset catatan jika status berubah bukan revisi
+                                        if (! in_array($state, Pengajuan::getStatRevisi())) {
+                                            $set('catatan_revisi', null);
+                                        }
+                                    }),
 
+                                // -------------------------------------------------------------
+                                // FIELD KHUSUS INVOICE (Hanya muncul jika pilih status INVOICE)
+                                // -------------------------------------------------------------
+                                Section::make('Data Tagihan (Invoice)')
+                                    ->description('Lengkapi data pembayaran untuk pelaku usaha.')
+                                    ->icon('heroicon-m-banknotes')
+                                    ->schema([
+                                        Grid::make(2)->schema([
+                                            TextInput::make('nomor_invoice')
+                                                ->label('No. Invoice')
+                                                ->default(function (Pengajuan $record) {
+                                                    // Panggil fungsi yang sama persis dengan Excel
+                                                    // Hasilnya PASTI: INV-20240530-00123 (Sesuai ID record ini)
+                                                    return $record->auto_invoice_number;
+                                                })
+                                                ->required()
+                                                ->readOnly(), // Agar admin tidak ubah-ubah format
+
+                                            DatePicker::make('tanggal_terbit')
+                                                ->label('Tanggal Invoice')
+                                                ->default(now())
+                                                ->required(),
+                                        ]),
+
+                                        TextInput::make('total_nominal')
+                                            ->label('Total Tagihan (Rp)')
+                                            ->prefix('Rp')
+                                            ->numeric()
+                                            ->required(),
+
+                                        TextInput::make('link_pembayaran')
+                                            ->label('Link Pembayaran (Opsional)')
+                                            ->placeholder('https://...')
+                                            ->url()
+                                            ->columnSpanFull(),
+
+                                        // Hidden field default value
+                                        Hidden::make('status_pembayaran')->default('BELUM DIBAYAR'),
+                                    ])
+                                    // LOGIC TAMPIL:
+                                    // 1. Harus di tab 'siap_invoice'
+                                    // 2. Status yang dipilih harus 'STATUS_INVOICE'
+                                    ->visible(
+                                        fn(Get $get, $livewire) => ($livewire->activeTab ?? '') === 'siap_invoice' &&
+                                            $get('status_verifikasi') === Pengajuan::STATUS_INVOICE
+                                    ),
+
+                                // -------------------------------------------------------------
+                                // FIELD CATATAN REVISI (Standard)
+                                // -------------------------------------------------------------
                                 Textarea::make('catatan_revisi')
                                     ->label('Catatan / Alasan Penolakan')
                                     ->placeholder('Contoh: Foto NIB buram, mohon upload ulang.')
                                     ->rows(3)
-                                    ->required(fn($get) => in_array($get('status_verifikasi'), [
-                                        Pengajuan::STATUS_NIK_INVALID,
-                                        Pengajuan::STATUS_PENGAJUAN_DITOLAK,
-                                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
-                                        Pengajuan::STATUS_UPLOAD_NIB
-                                    ])), // Wajib isi catatan jika statusnya Revisi/Tolak
-                            ])
+                                    ->visible(
+                                        fn(Get $get, $livewire) => ($livewire->activeTab ?? '') !== 'siap_invoice' &&
+                                            in_array($get('status_verifikasi'), Pengajuan::getStatRevisi())
+                                    )
+                                    ->required(fn(Get $get) => in_array($get('status_verifikasi'), Pengajuan::getStatRevisi())),
+
+                            ]),
                     ])
                     ->action(function (Pengajuan $record, array $data) {
-                        // 1. Update Data
-                        $record->update($data);
+                        // Gunakan Database Transaction agar aman
+                        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+
+                            $tagihanId = null; // Variabel penampung ID
+
+                            // A. Jika Status = INVOICE, Buat Data Tagihan
+                            if ($data['status_verifikasi'] === Pengajuan::STATUS_INVOICE) {
+                                // Cek apakah data invoice ada di array $data
+                                if (isset($data['nomor_invoice']) && ! empty($data['total_nominal'])) {
+                                    // Cari berdasarkan 'nomor_invoice'. 
+                                    // Jika ketemu -> Update datanya. Jika tidak ketemu -> Buat baru.
+                                    $tagihan = \App\Models\Tagihan::updateOrCreate(
+                                        ['nomor_invoice' => $data['nomor_invoice']], // Kunci pencarian (Unique)
+                                        [
+                                            'pendamping_id'     => $record->pendamping_id,
+                                            'total_nominal'     => $data['total_nominal'],
+                                            'link_pembayaran'   => $data['link_pembayaran'] ?? null,
+                                            'tanggal_terbit'    => $data['tanggal_terbit'],
+                                            // Pastikan status default BELUM DIBAYAR jika baru dibuat
+                                            // Jika update, kita bisa biarkan status lama atau reset (tergantung kebijakan)
+                                            'status_pembayaran' => 'BELUM DIBAYAR',
+                                        ]
+                                    );
+                                    // Simpan ID tagihan untuk relasi
+                                    $tagihanId = $tagihan->id;
+                                }
+                            }
+                            // B. Bersihkan data invoice dari array $data sebelum update ke tabel pengajuan
+                            // (Agar tidak error "Column not found" di tabel pengajuan)
+                            $updateData = collect($data)
+                                ->except([
+                                    'nomor_invoice',
+                                    'total_nominal',
+                                    'link_pembayaran',
+                                    'tanggal_terbit',
+                                    'status_pembayaran'
+                                ])
+                                ->toArray();
+
+                            // -------------------------------------------------------------
+                            // C. INJEKSI TAGIHAN ID (INI YANG KURANG TADI)
+                            // -------------------------------------------------------------
+                            // Jika ada tagihan yang dibuat, masukkan ID-nya ke update data pengajuan
+                            if ($tagihanId) {
+                                $updateData['tagihan_id'] = $tagihanId;
+                            }
+
+                            // Update Status Pengajuan
+                            $record->update($updateData);
+                        });
 
                         // 2. Kirim Notifikasi
                         Notification::make()
                             ->success()
                             ->title('Status Diperbarui')
-                            ->body("Status berhasil diubah menjadi: {$data['status_verifikasi']}")
+                            ->body('Status pengajuan diperbarui' . ($data['status_verifikasi'] === Pengajuan::STATUS_INVOICE ? ' & Invoice diterbitkan.' : '.'))
                             ->send();
                     }),
             ]);
@@ -512,8 +688,32 @@ class PengajuanResource extends Resource
                         ->columns(4)
                         ->columnSpanFull(),
 
+                    // -------------------------------------------------------------
+                    // [BARU] INFORMASI AKUN SIHALAL (PELAKU USAHA)
+                    // -------------------------------------------------------------
+                    \Filament\Infolists\Components\Section::make('Akun SiHalal (Pelaku Usaha)')
+                        ->icon('heroicon-o-finger-print')
+                        ->description('Kredensial login SiHalal milik Pelaku Usaha.')
+                        ->schema([
+                            \Filament\Infolists\Components\TextEntry::make('user.akun_halal')
+                                ->label('Username / Email')
+                                ->icon('heroicon-m-at-symbol')
+                                ->copyable()
+                                ->placeholder('Belum diatur'),
+
+                            \Filament\Infolists\Components\TextEntry::make('user.pass_akun_halal')
+                                ->label('Password')
+                                ->icon('heroicon-m-lock-closed')
+                                ->fontFamily(\Filament\Support\Enums\FontFamily::Mono) // Font koding agar jelas
+                                ->copyable()
+                                ->color('primary')
+                                ->placeholder('Belum diatur'),
+                        ])
+                        ->columns(2)
+                        ->columnSpanFull(),
+
                     // --- [BARU] INFORMASI AKUN SIHALAL PENDAMPING ---
-                    \Filament\Infolists\Components\Section::make('Akun SiHalal Pendamping')
+                    \Filament\Infolists\Components\Section::make('Akun SiHalal (Pendamping)')
                         ->icon('heroicon-o-key')
                         ->schema([
                             // Pastikan ganti 'sihalal_username' sesuai nama kolom di database Anda
@@ -573,7 +773,9 @@ class PengajuanResource extends Resource
                                         $path = $record->user->file_foto_produk;
 
                                         // Jika file tidak ada, kembalikan null
-                                        if (!$path) return null;
+                                        if (! $path) {
+                                            return null;
+                                        }
 
                                         // Return URL ke route proxy yang kita buat di langkah 1
                                         return route('drive.image', ['path' => $path]);
@@ -606,7 +808,9 @@ class PengajuanResource extends Resource
                                         $path = $record->user->file_foto_bersama;
 
                                         // Jika file tidak ada, kembalikan null
-                                        if (!$path) return null;
+                                        if (! $path) {
+                                            return null;
+                                        }
 
                                         // Return URL ke route proxy yang kita buat di langkah 1
                                         return route('drive.image', ['path' => $path]);
@@ -622,7 +826,7 @@ class PengajuanResource extends Resource
                                         ->action(function ($record) {
                                             // Ini akan memicu download langsung di browser user
                                             return Storage::disk('google')->download($record->user->file_foto_bersama);
-                                        })
+                                        }),
                                 ])->fullWidth(),
                             ])
                                 ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
@@ -635,7 +839,9 @@ class PengajuanResource extends Resource
                                         $path = $record->user->file_foto_usaha;
 
                                         // Jika file tidak ada, kembalikan null
-                                        if (!$path) return null;
+                                        if (! $path) {
+                                            return null;
+                                        }
 
                                         // Return URL ke route proxy yang kita buat di langkah 1
                                         return route('drive.image', ['path' => $path]);
@@ -651,7 +857,7 @@ class PengajuanResource extends Resource
                                         ->action(function ($record) {
                                             // Ini akan memicu download langsung di browser user
                                             return Storage::disk('google')->download($record->user->file_foto_usaha);
-                                        })
+                                        }),
                                 ])->fullWidth(),
                             ])
                                 ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
@@ -664,7 +870,9 @@ class PengajuanResource extends Resource
                                         $path = $record->user->file_ktp;
 
                                         // Jika file tidak ada, kembalikan null
-                                        if (!$path) return null;
+                                        if (! $path) {
+                                            return null;
+                                        }
 
                                         // Return URL ke route proxy yang kita buat di langkah 1
                                         return route('drive.image', ['path' => $path]);
@@ -680,7 +888,7 @@ class PengajuanResource extends Resource
                                         ->action(function ($record) {
                                             // Ini akan memicu download langsung di browser user
                                             return Storage::disk('google')->download($record->user->file_ktp);
-                                        })
+                                        }),
                                 ])->fullWidth(),
                             ])
                                 ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),

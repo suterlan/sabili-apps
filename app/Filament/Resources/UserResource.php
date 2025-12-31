@@ -5,32 +5,35 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use Filament\Forms;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Tabs;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Filament\Infolists\Components\Grid as InfolistGrid;
+use Filament\Infolists\Components\Group as InfolistGroup;
+use Filament\Infolists\Components\Section as InfolistSection;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
-use Laravolt\Indonesia\Models\Province;
-use Laravolt\Indonesia\Models\City;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\HtmlString;       // <--- PENTING: Pakai Alias
+use Laravolt\Indonesia\Models\City;     // <--- PENTING: Pakai Alias
 use Laravolt\Indonesia\Models\District;
+use Laravolt\Indonesia\Models\Province;
 use Laravolt\Indonesia\Models\Village;
-use Filament\Forms\Get;
-use Filament\Forms\Set;
-use Filament\Infolists\Infolist;
-use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\Grid as InfolistGrid;       // <--- PENTING: Pakai Alias
-use Filament\Infolists\Components\Group as InfolistGroup;     // <--- PENTING: Pakai Alias
-use Filament\Infolists\Components\Section as InfolistSection;
-use Filament\Forms\Components\Tabs;
-use Illuminate\Support\HtmlString;
 
 class UserResource extends Resource
 {
     protected static ?string $model = User::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-users'; // Saya ganti icon biar lebih pas
+
     protected static ?string $navigationGroup = 'Manajemen Sistem'; // Opsional: Biar rapi
 
     public static function form(Form $form): Form
@@ -74,6 +77,7 @@ class UserResource extends Resource
                                                     'pendamping' => 'Pendamping',
                                                 ];
                                             }
+
                                             return [
                                                 'koordinator' => 'Koordinator Kecamatan',
                                                 'pendamping' => 'Pendamping',
@@ -90,11 +94,11 @@ class UserResource extends Resource
                                             ->password()
                                             ->revealable()
                                             // Hash password sebelum disimpan
-                                            ->dehydrateStateUsing(fn($state) => Hash::make($state))
+                                            ->dehydrateStateUsing(fn ($state) => Hash::make($state))
                                             // Hanya update jika field diisi (penting untuk Edit)
-                                            ->dehydrated(fn($state) => filled($state))
+                                            ->dehydrated(fn ($state) => filled($state))
                                             // Wajib hanya saat Create
-                                            ->required(fn(string $context): bool => $context === 'create'),
+                                            ->required(fn (string $context): bool => $context === 'create'),
                                     ]),
                             ]),
 
@@ -119,8 +123,7 @@ class UserResource extends Resource
                                     Forms\Components\Select::make('kabupaten')
                                         ->label('Kabupaten / Kota')
                                         ->options(
-                                            fn(Get $get) =>
-                                            $get('provinsi') ? City::where('province_code', $get('provinsi'))->pluck('name', 'code') : []
+                                            fn (Get $get) => $get('provinsi') ? City::where('province_code', $get('provinsi'))->pluck('name', 'code') : []
                                         )
                                         ->searchable()
                                         ->live()
@@ -132,18 +135,16 @@ class UserResource extends Resource
                                     Forms\Components\Select::make('kecamatan')
                                         ->label('Kecamatan')
                                         ->options(
-                                            fn(Get $get) =>
-                                            $get('kabupaten') ? District::where('city_code', $get('kabupaten'))->pluck('name', 'code') : []
+                                            fn (Get $get) => $get('kabupaten') ? District::where('city_code', $get('kabupaten'))->pluck('name', 'code') : []
                                         )
                                         ->searchable()
                                         ->live()
-                                        ->afterStateUpdated(fn(Set $set) => $set('desa', null)),
+                                        ->afterStateUpdated(fn (Set $set) => $set('desa', null)),
 
                                     Forms\Components\Select::make('desa')
                                         ->label('Desa / Kelurahan')
                                         ->options(
-                                            fn(Get $get) =>
-                                            $get('kecamatan') ? Village::where('district_code', $get('kecamatan'))->pluck('name', 'code') : []
+                                            fn (Get $get) => $get('kecamatan') ? Village::where('district_code', $get('kecamatan'))->pluck('name', 'code') : []
                                         )
                                         ->searchable(),
                                 ]),
@@ -160,7 +161,7 @@ class UserResource extends Resource
                         Tabs\Tab::make('Dokumen & Berkas')
                             ->icon('heroicon-o-folder')
                             // Tab ini hilang otomatis jika bukan pendamping
-                            ->hidden(fn(Get $get) => $get('role') !== 'pendamping')
+                            ->hidden(fn (Get $get) => $get('role') !== 'pendamping')
                             ->schema([
 
                                 // Data Bank (Read Only buat Admin agar tidak salah edit)
@@ -189,7 +190,7 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('phone'),
                 Tables\Columns\TextColumn::make('role')
                     ->badge()
-                    ->color(fn(string $state): string => match ($state) {
+                    ->color(fn (string $state): string => match ($state) {
                         'superadmin' => 'gray', // Tambahan warna buat superadmin
                         'admin' => 'danger',
                         'pendamping' => 'warning', // Pendamping warna kuning
@@ -199,14 +200,14 @@ class UserResource extends Resource
                 // --- KOLOM BARU: STATUS ---
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn(string $state): string => match ($state) {
+                    ->color(fn (string $state): string => match ($state) {
                         'verified' => 'success', // Hijau
                         'rejected' => 'danger',  // Merah
                         'pending' => 'warning',  // Kuning
                         default => 'gray',
                     })
-                    ->formatStateUsing(fn(string $state): string => ucfirst($state)) // Huruf besar awal
-                    ->icon(fn(string $state): string => match ($state) {
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state)) // Huruf besar awal
+                    ->icon(fn (string $state): string => match ($state) {
                         'verified' => 'heroicon-o-check-circle',
                         'rejected' => 'heroicon-o-x-circle',
                         'pending' => 'heroicon-o-clock',
@@ -214,6 +215,41 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('created_at')->date(),
             ])
             ->actions([
+                // --- FITUR PENUGASAN WILAYAH (TOMBOL TERPISAH) ---
+                Tables\Actions\Action::make('assign_territory')
+                    ->label('Tugaskan Wilayah')
+                    ->icon('heroicon-m-map')
+                    ->color('info')
+                    ->modalWidth('lg')
+                    ->visible(fn (User $record) => $record->isAdmin()) // Hanya muncul untuk role admin
+                    ->mountUsing(function (User $record, \Filament\Forms\Form $form) {
+                        // Load data yang sudah tersimpan
+                        $form->fill([
+                            'assigned_districts' => $record->assigned_districts,
+                        ]);
+                    })
+                    ->form([
+                        Select::make('assigned_districts')
+                            ->label('Pilih Kecamatan')
+                            ->multiple() // Bisa pilih banyak
+                            ->searchable()
+                            ->preload() // Preload data kecamatan
+                            // Ambil data dari Laravolt District
+                            // code sebagai key, name sebagai label (Kode Cianjur: 3203)
+                            ->options(District::where('city_code', '3203')->pluck('name', 'code'))
+                            ->helperText('Admin ini hanya akan melihat pengajuan dari kecamatan yang dipilih.'),
+                    ])
+                    ->action(function (User $record, array $data) {
+                        $record->update([
+                            'assigned_districts' => $data['assigned_districts'],
+                        ]);
+
+                        Notification::make()
+                            ->title('Penugasan Berhasil')
+                            ->success()
+                            ->send();
+                    }),
+
                 Tables\Actions\ViewAction::make()
                     ->color('info'),
                 Tables\Actions\EditAction::make(),
@@ -226,21 +262,21 @@ class UserResource extends Resource
                         ->icon('heroicon-o-check')
                         ->color('success')
                         ->requiresConfirmation() // Minta konfirmasi biar gak salah klik
-                        ->action(fn(User $record) => $record->update(['status' => 'verified']))
-                        ->visible(fn(User $record) => $record->status !== 'verified'), // Sembunyi jika sudah verify
+                        ->action(fn (User $record) => $record->update(['status' => 'verified']))
+                        ->visible(fn (User $record) => $record->status !== 'verified'), // Sembunyi jika sudah verify
 
                     Tables\Actions\Action::make('reject')
                         ->label('Tolak Akun')
                         ->icon('heroicon-o-x-mark')
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->action(fn(User $record) => $record->update(['status' => 'rejected']))
-                        ->visible(fn(User $record) => $record->status !== 'rejected'),
+                        ->action(fn (User $record) => $record->update(['status' => 'rejected']))
+                        ->visible(fn (User $record) => $record->status !== 'rejected'),
                 ])
                     ->label('Ubah Status')
                     ->icon('heroicon-m-ellipsis-vertical')
                     // Aksi ini hanya boleh dilihat Superadmin/Admin
-                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
+                    ->visible(fn () => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
             ]);
     }
 
@@ -289,6 +325,7 @@ class UserResource extends Resource
     public static function canViewAny(): bool
     {
         $user = Auth::user();
+
         return $user->isSuperAdmin() || $user->isAdmin();
     }
 
@@ -319,7 +356,7 @@ class UserResource extends Resource
                             // 2. INFORMASI BANK
                             InfolistSection::make('Informasi Bank & Pendidikan')
                                 ->icon('heroicon-o-academic-cap')
-                                ->visible(fn($record) => $record->role === 'pendamping')
+                                ->visible(fn ($record) => $record->role === 'pendamping')
                                 ->schema([
                                     TextEntry::make('nama_bank')->label('Bank'),
                                     TextEntry::make('nomor_rekening')->label('No. Rekening')->copyable(),
@@ -348,7 +385,7 @@ class UserResource extends Resource
                                     TextEntry::make('phone')
                                         ->label('No. HP / WA')
                                         ->icon('heroicon-m-phone')
-                                        ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
+                                        ->url(fn ($state) => 'https://wa.me/'.preg_replace('/^0/', '62', $state), true)
                                         ->color('success'),
 
                                     TextEntry::make('role')
@@ -372,7 +409,7 @@ class UserResource extends Resource
                 // ========================================================
                 InfolistSection::make('Berkas Dokumen Pendamping')
                     ->icon('heroicon-o-folder-open')
-                    ->visible(fn($record) => $record->role === 'pendamping')
+                    ->visible(fn ($record) => $record->role === 'pendamping')
                     ->schema([
                         // Panggil helper function getProxyImageEntry
                         self::getProxyImageEntry('file_pas_foto', 'Pas Foto'),
@@ -396,14 +433,14 @@ class UserResource extends Resource
     {
         return TextEntry::make($field)
             ->label($label)
-            ->formatStateUsing(fn($state) => empty($state) ? '-' : new HtmlString("
+            ->formatStateUsing(fn ($state) => empty($state) ? '-' : new HtmlString("
                 <div class='relative group overflow-hidden rounded-lg border border-gray-200 shadow-sm bg-gray-50'>
-                    <img src='" . route('drive.image', ['path' => $state]) . "' 
+                    <img src='".route('drive.image', ['path' => $state])."' 
                          alt='$label' 
                          class='w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105' 
                          loading='lazy'>
                     
-                    <a href='" . route('drive.image', ['path' => $state]) . "' 
+                    <a href='".route('drive.image', ['path' => $state])."' 
                        target='_blank' 
                        class='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-white font-bold tracking-wide no-underline'>
                        <svg xmlns='http://www.w3.org/2000/svg' class='h-6 w-6 mr-2' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
