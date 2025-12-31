@@ -65,12 +65,22 @@ class ImportTagihan implements ToModel, WithHeadingRow
                 ->where('status_verifikasi', Pengajuan::STATUS_INVOICE)
                 ->latest()
                 ->first();
+        }
 
-            if (! $pengajuan) {
-                $this->gagal++; // Tidak ada pengajuan yang siap ditagih
+        if (! $pengajuan) {
+            $this->gagal++; // Tidak ada pengajuan yang siap ditagih
 
-                return null;
-            }
+            return null;
+        }
+
+        // ==================================================================
+        // SECURITY CHECK (PENTING!)
+        // Pastikan Pengajuan ini milik Verifikator yang sedang login
+        // ==================================================================
+        if ($pengajuan->verificator_id !== auth()->id()) {
+            $this->gagal++;
+            // Opsi: Anda bisa return null diam-diam, atau log kejadian ini.
+            return null;
         }
 
         // ------------------------------------------------------------------
@@ -128,12 +138,10 @@ class ImportTagihan implements ToModel, WithHeadingRow
                     'tagihan_id' => $tagihan->id,
                     'status_verifikasi' => Pengajuan::STATUS_INVOICE,
                 ]);
-
             }); // End Transaction
 
             // Jika sampai sini berarti sukses commit
             $this->sukses++;
-
         } catch (\Exception $e) {
             // Jika ada error sql/logic di dalam transaction, dia akan lari kesini
             // Dan database otomatis ROLLBACK (batal simpan)

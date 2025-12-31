@@ -18,6 +18,7 @@ class TemplateInvoiceExport implements FromCollection, ShouldAutoSize, WithHeadi
         // AMBIL DATA YANG SIAP DITAGIH
         // Syarat: Status = Sertifikat Diterbitkan DAN Belum punya tagihan
         return Pengajuan::with(['user', 'pendamping'])
+            ->where('verificator_id', auth()->id()) // <--- PENAMBAHAN KEAMANAN DISINI
             ->where('status_verifikasi', Pengajuan::STATUS_SERTIFIKAT)
             ->whereNull('tagihan_id')
             ->get()
