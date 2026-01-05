@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 class TopPendampingChart extends ChartWidget
 {
     protected static ?string $heading = 'Top Pendamping (Jumlah Anggota)';
-    protected static ?int $sort = 2; // Urutan tampilan
+    protected static ?int $sort = 4; // Urutan tampilan
 
     protected int | string | array $columnSpan = 'full';
 
@@ -42,6 +42,6 @@ class TopPendampingChart extends ChartWidget
     // Hanya Tampil untuk Superadmin & Admin
     public static function canView(): bool
     {
-        return Auth::user()->isSuperAdmin() || Auth::user()->isAdmin();
+        return Auth::user()->isSuperAdmin();
     }
 }

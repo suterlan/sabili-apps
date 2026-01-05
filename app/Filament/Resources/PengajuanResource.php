@@ -6,6 +6,7 @@ use App\Filament\Resources\PengajuanResource\Pages;
 use App\Models\Pengajuan;
 use Filament\Forms;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
@@ -413,7 +414,7 @@ class PengajuanResource extends Resource
                         // Button muncul di tab 'siap_invoice' ATAU tab kerjaan standar
                         // Tapi JANGAN muncul di tab 'selesai' atau 'semua' (history)
                         // Dan jangan muncul jika status sudah Invoice/Selesai (sudah final di tahap ini)
-                        $isTabAllowed = in_array($tab, ['tugas_saya', 'revisi', 'proses', 'siap_invoice']);
+                        $isTabAllowed = in_array($tab, ['tugas_saya', 'revisi', 'proses', 'dikirim', 'siap_invoice']);
 
                         $statusFinal = in_array($record->status_verifikasi, [
                             Pengajuan::STATUS_INVOICE,
@@ -445,7 +446,7 @@ class PengajuanResource extends Resource
                                             ];
                                         }
 
-                                        // JIKA DI TAB LAIN (Antrian, Tugas Saya, Revisi, Proses)
+                                        // JIKA DI TAB LAIN (Antrian, Tugas Saya, Revisi, Proses, Dikirim)
                                         // Gunakan opsi standar verifikator (tanpa invoice/selesai)
                                         return Pengajuan::getOpsiManualVerifikator();
                                     })
@@ -457,7 +458,31 @@ class PengajuanResource extends Resource
                                         if (! in_array($state, Pengajuan::getStatRevisi())) {
                                             $set('catatan_revisi', null);
                                         }
+
+                                        // Reset file jika batal pilih sertifikat (opsional, UX choice)
+                                        if ($state !== Pengajuan::STATUS_SERTIFIKAT) {
+                                            $set('file_sertifikat', null);
+                                        }
                                     }),
+
+                                // -------------------------------------------------------------
+                                // [BARU] FIELD UPLOAD SERTIFIKAT
+                                // -------------------------------------------------------------
+                                FileUpload::make('file_sertifikat')
+                                    ->label('Upload File Sertifikat (PDF)')
+                                    ->directory('sertifikat-halal') // Folder penyimpanan di storage
+                                    ->acceptedFileTypes(['application/pdf'])
+                                    ->maxSize(5120) // 5MB
+                                    ->downloadable()
+                                    ->openable()
+                                    ->columnSpanFull()
+                                    // Hanya Tampil jika status = SERTIFIKAT_TERBIT
+                                    ->visible(fn(Get $get) => $get('status_verifikasi') === Pengajuan::STATUS_SERTIFIKAT)
+                                    // Wajib diisi jika status = SERTIFIKAT_TERBIT
+                                    ->required(fn(Get $get) => $get('status_verifikasi') === Pengajuan::STATUS_SERTIFIKAT)
+                                    ->validationMessages([
+                                        'required' => 'Wajib upload sertifikat halal',
+                                    ]),
 
                                 // -------------------------------------------------------------
                                 // FIELD KHUSUS INVOICE (Hanya muncul jika pilih status INVOICE)
@@ -561,6 +586,9 @@ class PengajuanResource extends Resource
                                 ])
                                 ->toArray();
 
+                            // Note: 'file_sertifikat' otomatis MASUK di $updateData karena tidak di-except.
+                            // Filament otomatis menangani pemindahan file tmp ke directory tujuan.
+
                             // -------------------------------------------------------------
                             // C. INJEKSI TAGIHAN ID (INI YANG KURANG TADI)
                             // -------------------------------------------------------------
@@ -573,11 +601,19 @@ class PengajuanResource extends Resource
                             $record->update($updateData);
                         });
 
+                        // Notifikasi
+                        $pesan = 'Status diperbarui.';
+                        if ($data['status_verifikasi'] === Pengajuan::STATUS_SERTIFIKAT) {
+                            $pesan = 'Sertifikat berhasil diterbitkan & diupload.';
+                        } elseif ($data['status_verifikasi'] === Pengajuan::STATUS_INVOICE) {
+                            $pesan = 'Status diperbarui & Invoice diterbitkan.';
+                        }
+
                         // 2. Kirim Notifikasi
                         Notification::make()
                             ->success()
                             ->title('Status Diperbarui')
-                            ->body('Status pengajuan diperbarui' . ($data['status_verifikasi'] === Pengajuan::STATUS_INVOICE ? ' & Invoice diterbitkan.' : '.'))
+                            ->body($pesan)
                             ->send();
                     }),
             ]);

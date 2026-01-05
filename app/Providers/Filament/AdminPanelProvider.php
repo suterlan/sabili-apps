@@ -59,6 +59,10 @@ class AdminPanelProvider extends PanelProvider
                 Widgets\AccountWidget::class,
                 // Widgets\FilamentInfoWidget::class,
             ])
+            ->navigationGroups([
+                'Master Data',
+                'Laporan',
+            ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

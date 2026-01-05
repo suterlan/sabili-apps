@@ -54,6 +54,8 @@ class AnggotaResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Pelaku Usaha';
 
+    protected static ?string $navigationGroup = 'Master Data';
+
     public static function form(Form $form): Form
     {
         return $form

@@ -4,70 +4,87 @@ namespace App\Filament\Widgets;
 
 use App\Models\Pengajuan;
 use Filament\Widgets\ChartWidget;
-use Flowframe\Trend\Trend;          // <-- Class ini sekarang sudah ada
-use Flowframe\Trend\TrendValue;     // <-- Class ini sekarang sudah ada
+use Flowframe\Trend\Trend;
+use Flowframe\Trend\TrendValue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
 class PengajuanChart extends ChartWidget
 {
     protected static ?int $sort = 3;
-    protected static ?string $heading = 'Tren Pengajuan Masuk';
+
+    // Kita buat judulnya dinamis agar admin tahu ini data wilayah siapa
+    public function getHeading(): string
+    {
+        return 'Tren Pengajuan Masuk (30 Hari Terakhir)';
+    }
+
     protected int | string | array $columnSpan = 'full';
-    // Agar grafik update otomatis setiap 15 detik (opsional)
+
     protected static ?string $pollingInterval = '15s';
 
     // =========================================================
-    // 1. FILTER VISIBILITY (Hanya Admin & Koordinator)
+    // 1. FILTER VISIBILITY
     // =========================================================
     public static function canView(): bool
     {
         $user = auth()->user();
-
-        // Tampilkan jika: Superadmin ATAU Admin ATAU Koordinator
-        // Pendamping otomatis tidak akan melihat ini (return false)
+        // Hanya Superadmin, Admin, dan Koordinator
         return $user->isSuperAdmin() || $user->isAdmin() || $user->isKoordinator();
     }
 
     // =========================================================
-    // 2. LOGIC DATA (Admin = Global, Koordinator = Lokal)
+    // 2. LOGIC DATA (FILTER WILAYAH)
     // =========================================================
     protected function getData(): array
     {
         $user = Auth::user();
-        // 1. Buat Query Dasar
+
+        // 1. Inisialisasi Query
         $query = Pengajuan::query();
 
-        // 2. Cek Role: Jika Koordinator, Filter per Kecamatan
-        if ($user->isKoordinator()) {
-            $kodeKecamatan = $user->kecamatan;
+        // 2. FILTER BERDASARKAN ROLE
 
-            // Filter hanya pengajuan dari user di kecamatan tersebut
+        if ($user->isSuperAdmin()) {
+            // A. SUPERADMIN: Tidak ada filter (Global)
+            // Biarkan query kosong agar mengambil semua data
+        } elseif ($user->isAdmin()) {
+            // B. ADMIN: Filter berdasarkan Array assigned_districts
+            if ($user->hasAssignedDistricts()) {
+                $query->whereHas('user', function (Builder $q) use ($user) {
+                    $q->whereIn('kecamatan', $user->assigned_districts);
+                });
+            } else {
+                // Jika Admin belum punya wilayah tugas, grafik kosong
+                $query->whereRaw('1 = 0');
+            }
+        } elseif ($user->isKoordinator()) {
+            // C. KOORDINATOR: Filter berdasarkan 1 Kecamatan user
+            $kodeKecamatan = $user->kecamatan;
             $query->whereHas('user', function (Builder $q) use ($kodeKecamatan) {
                 $q->where('kecamatan', $kodeKecamatan);
             });
         }
 
-        // Jika Admin/Superadmin, biarkan $query mengambil semua data (tanpa filter)
-        // 3. Eksekusi menggunakan Trend Library
+        // 3. Eksekusi Trend (Sama untuk semua role, hanya query-nya yang beda isi)
         $data = Trend::query($query)
             ->between(
-                start: now()->subDays(30), // Data 30 hari terakhir
+                start: now()->subDays(30),
                 end: now(),
             )
             ->perDay()
             ->count();
 
-        // 4. Return format Chart.js
+        // 4. Return Data Chart
         return [
             'datasets' => [
                 [
-                    'label' => 'Jumlah Pengajuan',
+                    'label' => 'Jumlah Pengajuan Baru',
                     'data' => $data->map(fn(TrendValue $value) => $value->aggregate),
-                    'borderColor' => '#3b82f6', // Warna Biru
-                    'backgroundColor' => 'rgba(59, 130, 246, 0.1)', // Warna arsiran bawah
+                    'borderColor' => '#3b82f6', // Biru Filament
+                    'backgroundColor' => 'rgba(59, 130, 246, 0.1)', // Arsiran transparan
                     'fill' => true,
-                    'tension' => 0.4, // Garis melengkung halus
+                    'tension' => 0.4, // Curve halus
                 ],
             ],
             'labels' => $data->map(fn(TrendValue $value) => $value->date),

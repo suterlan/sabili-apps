@@ -12,6 +12,7 @@ class Pengajuan extends Model
     // verificator_id
     // status_verifikasi
     // catatan_revisi
+    // file_sertifikat (new added)
     // verified_at
 
     protected $guarded = [];
@@ -88,6 +89,12 @@ class Pengajuan extends Model
             self::STATUS_MENUNGGU,
             self::STATUS_DIPROSES,
             self::STATUS_LOLOS_VERIFIKASI,
+        ];
+    }
+
+    public static function getStatDikirim(): array
+    {
+        return [
             self::STATUS_PENGAJUAN_DIKIRIM,
         ];
     }
@@ -133,6 +140,6 @@ class Pengajuan extends Model
         // Format: INV - TAHUNBULANTANGGAL - ID_PENGAJUAN (5 Digit)
         // Contoh: INV-20240520-00123
         // Menggunakan ID menjamin unik dan konsisten (tidak akan bentrok antar user)
-        return 'INV-'.date('Ymd').'-'.str_pad($this->id, 5, '0', STR_PAD_LEFT);
+        return 'INV-' . date('Ymd') . '-' . str_pad($this->id, 5, '0', STR_PAD_LEFT);
     }
 }

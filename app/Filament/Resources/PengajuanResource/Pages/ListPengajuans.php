@@ -24,13 +24,17 @@ class ListPengajuans extends ListRecords
         $user = auth()->user();
         $tabs = []; // Inisialisasi array kosong
 
+        // Helper: Cek apakah user adalah Super Admin
+        // (Sesuaikan method ini dengan logic role di aplikasi Anda)
+        $isSuperAdmin = $user->isSuperAdmin();
+
         // -------------------------------------------------------
         // LOGIC QUERY WILAYAH
         // -------------------------------------------------------
         // Fungsi helper untuk filter wilayah berdasarkan User Pelaku Usaha
         // Pengajuan -> User (Pelaku Usaha) -> district_code
-        $applyRegionFilter = function (Builder $query) use ($user) {
-            if (! $user->isSuperAdmin() && $user->hasAssignedDistricts()) {
+        $applyRegionFilter = function (Builder $query) use ($user, $isSuperAdmin) {
+            if (!$isSuperAdmin && $user->hasAssignedDistricts()) {
                 $query->whereHas('user', function (Builder $q) use ($user) {
                     $q->whereIn('kecamatan', $user->assigned_districts);
                 });
@@ -40,13 +44,31 @@ class ListPengajuans extends ListRecords
         };
 
         // -------------------------------------------------------
+        // HELPER FILTER VERIFIKATOR
+        // (Agar kode tidak berulang-ulang di setiap tab)
+        // -------------------------------------------------------
+        $filterByVerificator = function (Builder $query) use ($user, $isSuperAdmin) {
+            // 1. SYARAT UTAMA: Data harus SUDAH DI-KLAIM (Punya Verifikator)
+            // Ini mencegah data "Antrian" bocor ke tab Proses/Revisi/Lainnya
+            $query->whereNotNull('verificator_id');
+
+            // 2. FILTER KEPEMILIKAN
+            // Jika Super Admin: Bebas lihat punya siapa saja (asal sudah diklaim)
+            // Jika Verifikator: Hanya lihat punya sendiri
+            if (! $isSuperAdmin) {
+                $query->where('verificator_id', $user->id);
+            }
+            return $query;
+        };
+
+        // -------------------------------------------------------
         // TAB 1: ANTRIAN (Semua User Bisa Lihat Antrian Masuk)
         // -------------------------------------------------------
         // Hitung badge antrian (termasuk filter wilayah)
         $badgeAntrian = Pengajuan::whereNull('verificator_id');
-        if (! $user->isSuperAdmin() && $user->hasAssignedDistricts()) {
-            $badgeAntrian->whereHas('user', fn($q) => $q->whereIn('kecamatan', $user->assigned_districts));
-        }
+        // Terapkan filter wilayah untuk badge jika bukan superadmin
+        $applyRegionFilter($badgeAntrian);
+
         $tabs['antrian'] = Tab::make('Antrian Masuk')
             ->icon('heroicon-m-inbox-stack')
             ->badge($badgeAntrian->count()) // Badge tetap menghitung TOTAL antrian (misal: 50)
@@ -75,82 +97,81 @@ class ListPengajuans extends ListRecords
                 // Fallback jika data kosong (mencegah error)
                 // Tetap filter null dan wilayah agar konsisten
                 $query->whereNull('verificator_id');
-
                 return $applyRegionFilter($query);
             });
 
-        // -------------------------------------------------------
-        // TAB KHUSUS VERIFIKATOR (Bukan Super Admin) (Tidak perlu filter wilayah lagi, karena sudah di-claim by ID)
-        // -------------------------------------------------------
-        if (! $user->isSuperAdmin()) {
+        // Tab Perlu Revisi (Merah)
+        $tabs['revisi'] = Tab::make('Perlu Revisi')
+            ->icon('heroicon-m-exclamation-triangle')
+            ->badgeColor('danger')
+            ->badge(function () use ($filterByVerificator) {
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatRevisi()))->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatRevisi());
+                return $filterByVerificator($query);
+            });
 
-            // Tab Perlu Revisi (Merah)
-            $tabs['revisi'] = Tab::make('Perlu Revisi')
-                ->icon('heroicon-m-exclamation-triangle')
-                ->badgeColor('danger')
-                ->badge(Pengajuan::where('verificator_id', $user->id)
-                    ->whereIn('status_verifikasi', Pengajuan::getStatRevisi())->count())
-                ->modifyQueryUsing(function (Builder $query) use ($user) {
-                    return $query->where('verificator_id', $user->id)
-                        ->whereIn('status_verifikasi', Pengajuan::getStatRevisi());
-                });
+        // Tab Sedang Diproses (Kuning/Biru)
+        $tabs['proses'] = Tab::make('Diproses')
+            ->icon('heroicon-m-arrow-path')
+            ->badgeColor('warning')
+            ->badge(function () use ($filterByVerificator) {
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatProses()))->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatProses());
+                return $filterByVerificator($query);
+            });
 
-            // Tab Sedang Diproses (Kuning/Biru)
-            $tabs['proses'] = Tab::make('Sedang Diproses')
-                ->icon('heroicon-m-arrow-path')
-                ->badgeColor('warning')
-                ->badge(Pengajuan::where('verificator_id', $user->id)
-                    ->whereIn('status_verifikasi', Pengajuan::getStatProses())->count())
-                ->modifyQueryUsing(function (Builder $query) use ($user) {
-                    return $query->where('verificator_id', $user->id)
-                        ->whereIn('status_verifikasi', Pengajuan::getStatProses());
-                });
-        }
+        // Tab Pengajuan Dikirim
+        $tabs['dikirim'] = Tab::make('Dikirim')
+            ->icon('heroicon-m-paper-airplane')
+            ->badgeColor('primary')
+            ->badge(function () use ($filterByVerificator) {
+                // Hitung badge dengan helper filter
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatDikirim()))->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatDikirim());
+                return $filterByVerificator($query); // Apply filter verifikator jika perlu
+            });
 
-        // -------------------------------------------------------
-        // TAB UMUM (Muncul untuk Semua)
-        // -------------------------------------------------------
         // Tab Siap Invoice = status sertifikat terbit (Hijau) -> Trigger Tombol Import
         $tabs['siap_invoice'] = Tab::make('Siap Invoice')
             ->icon('heroicon-m-banknotes')
             ->badgeColor('info')
-            ->badge(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatSiapInvoice())->count())
-            ->modifyQueryUsing(function (Builder $query) use ($user) {
-                return $query->where('verificator_id', $user->id)
-                    ->whereIn('status_verifikasi', Pengajuan::getStatSiapInvoice());
+            ->badge(function () use ($filterByVerificator) {
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatSiapInvoice()))->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatSiapInvoice());
+                return $filterByVerificator($query);
             });
 
         // TAB SELESAI = status invoice diterbitkan dan status selesai
         $tabs['selesai'] = Tab::make('Invoice & Selesai')
             ->icon('heroicon-m-check-badge')
             ->badgeColor('success')
-            // Tambahkan Badge: Hitung data milik user ini yang statusnya selesai
-            ->badge(Pengajuan::where('verificator_id', $user->id)
-                ->whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai())
-                ->count())
-            ->modifyQueryUsing(function (Builder $query) use ($user) {
-                return $query->where('verificator_id', $user->id)
-                    ->whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai())
-                    ->latest();
+            ->badge(function () use ($filterByVerificator) {
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai()))->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai())->latest();
+                return $filterByVerificator($query);
             });
 
         // TAB RIWAYAT (History Kerja)
         $tabs['semua'] = Tab::make('Riwayat')
             ->icon('heroicon-m-clock') // Tambah ikon jam/history
-            ->badge(Pengajuan::where('verificator_id', $user->id)
-                ->count())
             ->badgeColor('gray')
-            ->modifyQueryUsing(function (Builder $query) use ($user) {
-
-                // 1. Super Admin: Melihat segalanya (Global)
-                if ($user->isSuperAdmin()) {
-                    return $query->latest();
-                }
-
-                // 2. Admin Verifikator: Hanya melihat "Jejak Kerja Sendiri"
-                // Tanpa filter status (semua status), asalkan dia verifikatornya.
-                return $query->where('verificator_id', $user->id)
-                    ->latest();
+            ->badge(function () use ($filterByVerificator) {
+                // Badge hanya menghitung total data yg relevan
+                return $filterByVerificator(Pengajuan::query())->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                // Apply filter: Superadmin lihat semua, Verif lihat punya sendiri
+                return $filterByVerificator($query)->latest();
             });
 
         return $tabs;
@@ -217,8 +238,11 @@ class ListPengajuans extends ListRecords
                 ->button()
                 // VISIBILITY CHECK YANG LEBIH AMAN
                 ->visible(function () {
-                    // Mengembalikan true HANYA jika tab yang aktif adalah 'siap_invoice'
-                    return $this->activeTab === 'siap_invoice';
+                    // Mengembalikan true HANYA jika tab yang aktif adalah 'siap_invoice' dan hanya superadmin
+                    $isInoviceTab = $this->activeTab === 'siap_invoice';
+                    $superAdmin = auth()->user()->isSuperAdmin();
+
+                    return $isInoviceTab && $superAdmin;
                 }),
 
             \Filament\Actions\CreateAction::make(),

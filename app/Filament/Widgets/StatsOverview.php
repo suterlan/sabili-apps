@@ -26,11 +26,14 @@ class StatsOverview extends BaseWidget
         if ($user->isSuperAdmin()) {
             return [
                 // A. Antrian (Belum dipegang siapapun)
-                Stat::make('Antrian Global', Pengajuan::whereNull('verificator_id')->count())
+                Stat::make('Antrian Global', Pengajuan::whereNull('verificator_id')
+                    ->where('status_verifikasi', Pengajuan::STATUS_MENUNGGU)
+                    ->count())
                     ->description('Menunggu verifikator')
                     ->descriptionIcon('heroicon-m-inbox-stack')
                     ->chart([10, 5, 20, 5, 30])
-                    ->color('danger'),
+                    ->color('danger')
+                    ->url(PengajuanResource::getUrl('index', ['activeTab' => 'antrian'])),
 
                 // B. Workload (Sedang dikerjakan: Revisi + Proses)
                 Stat::make('Workload Admin', Pengajuan::whereNotNull('verificator_id')
@@ -48,7 +51,8 @@ class StatsOverview extends BaseWidget
                     ->description('Menunggu penerbitan tagihan')
                     ->descriptionIcon('heroicon-m-currency-dollar')
                     ->color('primary')
-                    ->chart([2, 10, 5, 20]),
+                    ->chart([2, 10, 5, 20])
+                    ->url(PengajuanResource::getUrl('index', ['activeTab' => 'siap_invoice'])),
 
                 // D. Selesai (Invoice + Lunas)
                 Stat::make('Selesai / Tagihan', Pengajuan::whereIn('status_verifikasi', [
@@ -65,12 +69,32 @@ class StatsOverview extends BaseWidget
         // 2. LOGIKA ADMIN (Verifikator) - SESUAI TAB BARU
         // =====================================================================
         if ($user->isAdmin()) {
-            // Query Dasar: Tugas Saya
+            // --- A. DATA ANTRIAN (BELUM DIKLAIM) ---
+            // Harus difilter berdasarkan 'assigned_districts'
+
+            $antrianQuery = Pengajuan::query()
+                ->where('status_verifikasi', Pengajuan::STATUS_MENUNGGU)
+                ->whereNull('verificator_id');
+
+            // Cek apakah Admin punya wilayah tugas
+            if ($user->hasAssignedDistricts()) {
+                // Filter User (Pelaku Usaha) yang kecamatannya ada di daftar tugas admin
+                $antrianQuery->whereHas('user', function (Builder $q) use ($user) {
+                    $q->whereIn('kecamatan', $user->assigned_districts);
+                });
+            } else {
+                // Jika tidak punya wilayah, set hasil query jadi 0 (keamanan)
+                $antrianQuery->whereRaw('1 = 0');
+            }
+
+            // --- B. DATA YANG SUDAH DIKLAIM (TUGAS SAYA) ---
+            // Mengambil semua data dimana verificator_id adalah user ini
+            // Tidak perlu filter wilayah lagi, karena sudah diklaim
             $myTasks = Pengajuan::where('verificator_id', $user->id);
 
             return [
-                // TAB 1: ANTRIAN (Global, belum ada yg pegang)
-                Stat::make('Antrian Masuk', Pengajuan::whereNull('verificator_id')->count())
+                // TAB 1: ANTRIAN (Sesuai Wilayah)
+                Stat::make('Antrian Masuk', $antrianQuery->count())
                     ->description('Klik untuk klaim')
                     ->descriptionIcon('heroicon-m-inbox-arrow-down')
                     ->color('danger')
@@ -79,39 +103,33 @@ class StatsOverview extends BaseWidget
 
                 // TAB 2: REVISI (Tugas Saya yg statusnya Revisi)
                 Stat::make('Menunggu Revisi', (clone $myTasks)
-                    ->whereIn('status_verifikasi', [
-                        Pengajuan::STATUS_NIK_INVALID,
-                        Pengajuan::STATUS_PENGAJUAN_DITOLAK,
-                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
-                        Pengajuan::STATUS_UPLOAD_NIB,
-                    ])->count())
+                    ->whereIn('status_verifikasi', Pengajuan::getStatRevisi())->count())
                     ->description('Menunggu respon user')
                     ->descriptionIcon('heroicon-m-arrow-path')
                     ->color('warning')
                     ->url(PengajuanResource::getUrl('index', ['activeTab' => 'revisi'])), // Link ke Tab Revisi
 
-                // TAB 3: PROSES (Tugas Saya yg sedang berjalan)
+                // TAB 3: PROSES (Gabungan Menunggu Verif, Diproses, Lolos, Dikirim)
+                // Ini menggantikan "Tugas Saya"
                 Stat::make('Sedang Saya Proses', (clone $myTasks)
-                    ->whereIn('status_verifikasi', [
-                        Pengajuan::STATUS_MENUNGGU,
-                        Pengajuan::STATUS_DIPROSES,
-                        Pengajuan::STATUS_LOLOS_VERIFIKASI,
-                        Pengajuan::STATUS_PENGAJUAN_DIKIRIM,
-                    ])->count())
+                    ->whereIn('status_verifikasi', Pengajuan::getStatProses()) // Pakai Helper Model
+                    ->count())
                     ->description('Verifikasi aktif')
                     ->descriptionIcon('heroicon-m-pencil-square')
                     ->color('info')
-                    ->url(PengajuanResource::getUrl('index', ['activeTab' => 'proses'])), // Link ke Tab Proses
+                    ->url(PengajuanResource::getUrl('index', ['activeTab' => 'proses'])),
 
-                // TAB 4: SIAP INVOICE (Sertifikat Terbit)
-                Stat::make('Siap Invoice', (clone $myTasks) // Atau Global jika admin finance terpisah
-                    ->where('status_verifikasi', Pengajuan::STATUS_SERTIFIKAT)
+                // 4. SELESAI & TAGIHAN (UPDATED)
+                // Menggabungkan status: INVOICE (Tagihan keluar) dan SELESAI (Lunas/Beres)
+                Stat::make('Selesai / Tagihan', (clone $myTasks)
+                    ->whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai())
                     ->count())
-                    ->description('Buat Tagihan Sekarang')
-                    ->descriptionIcon('heroicon-m-banknotes')
-                    ->color('success') // Hijau mencolok agar dikerjakan
-                    ->chart([1, 1, 5, 2, 10])
-                    ->url(PengajuanResource::getUrl('index', ['activeTab' => 'siap_invoice'])), // Link ke Tab Siap Invoice
+                    ->description('Output Final')
+                    ->descriptionIcon('heroicon-m-check-badge')
+                    ->color('success')
+                    ->chart([1, 5, 3, 10, 5])
+                    // Pastikan Anda membuat tab 'selesai' di ListPengajuans nanti
+                    ->url(PengajuanResource::getUrl('index', ['activeTab' => 'selesai'])),
             ];
         }
 
@@ -127,13 +145,16 @@ class StatsOverview extends BaseWidget
             });
 
             return [
-                Stat::make('Antrian Wilayah', (clone $queryKecamatan)->whereNull('verificator_id')->count())
+                Stat::make('Antrian Wilayah', (clone $queryKecamatan)
+                    ->whereNull('verificator_id')
+                    ->where('status_verifikasi', Pengajuan::STATUS_MENUNGGU)
+                    ->count())
                     ->description('Belum diklaim admin')
                     ->color('danger'),
 
                 Stat::make('Total Diproses', (clone $queryKecamatan)
-                    ->whereNotIn('status_verifikasi', [Pengajuan::STATUS_SELESAI, Pengajuan::STATUS_INVOICE])
                     ->whereNotNull('verificator_id')
+                    ->whereNotIn('status_verifikasi', [Pengajuan::STATUS_SELESAI, Pengajuan::STATUS_INVOICE])
                     ->count())
                     ->description('Sedang berjalan')
                     ->color('warning'),
@@ -155,12 +176,8 @@ class StatsOverview extends BaseWidget
             return [
                 // Kelompok 1: MASALAH (Revisi)
                 Stat::make('Perlu Perbaikan', (clone $myPengajuans)
-                    ->whereIn('status_verifikasi', [
-                        Pengajuan::STATUS_NIK_INVALID,
-                        Pengajuan::STATUS_UPLOAD_NIB,
-                        Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
-                        Pengajuan::STATUS_PENGAJUAN_DITOLAK
-                    ])->count())
+                    ->whereIn('status_verifikasi', Pengajuan::getStatRevisi())
+                    ->count())
                     ->description('Cek Tab Revisi')
                     ->color('danger')
                     ->icon('heroicon-m-exclamation-circle')
@@ -169,12 +186,11 @@ class StatsOverview extends BaseWidget
 
                 // Kelompok 2: PROGRESS (Menunggu s/d Dikirim)
                 Stat::make('Sedang Berjalan', (clone $myPengajuans)
-                    ->whereIn('status_verifikasi', [
-                        Pengajuan::STATUS_MENUNGGU,
-                        Pengajuan::STATUS_DIPROSES,
-                        Pengajuan::STATUS_LOLOS_VERIFIKASI,
-                        Pengajuan::STATUS_PENGAJUAN_DIKIRIM
-                    ])->count())
+                    ->whereIn('status_verifikasi', array_merge(
+                        Pengajuan::getStatProses(),
+                        Pengajuan::getStatDikirim()
+                    ))
+                    ->count())
                     ->description('Menunggu Admin')
                     ->color('warning')
                     ->icon('heroicon-m-clock'),
@@ -187,12 +203,10 @@ class StatsOverview extends BaseWidget
                     ->color('primary')
                     ->icon('heroicon-m-document-check'),
 
-                // Kelompok 4: SELESAI (Tagihan Keluar / Lunas)
+                // SELESAI
                 Stat::make('Selesai & Tagihan', (clone $myPengajuans)
-                    ->whereIn('status_verifikasi', [
-                        Pengajuan::STATUS_INVOICE,
-                        Pengajuan::STATUS_SELESAI
-                    ])->count())
+                    ->whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai())
+                    ->count())
                     ->description('Proses Final')
                     ->color('success')
                     ->icon('heroicon-m-check-badge'),

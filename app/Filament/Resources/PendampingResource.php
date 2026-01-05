@@ -50,7 +50,9 @@ class PendampingResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
 
-    protected static ?int $navigationSort = 2; // Urutan menu
+    protected static ?string $navigationGroup = 'Master Data';
+
+    // protected static ?int $navigationSort = 2; // Urutan menu
 
     public static function form(Form $form): Form
     {
@@ -133,7 +135,7 @@ class PendampingResource extends Resource
 
                                     Select::make('kabupaten')
                                         ->label('Kabupaten / Kota')
-                                        ->options(fn (Get $get) => $get('provinsi') ? City::where('province_code', $get('provinsi'))->pluck('name', 'code') : [])
+                                        ->options(fn(Get $get) => $get('provinsi') ? City::where('province_code', $get('provinsi'))->pluck('name', 'code') : [])
                                         ->searchable()
                                         ->live()
                                         ->afterStateUpdated(function (Set $set) {
@@ -143,14 +145,14 @@ class PendampingResource extends Resource
 
                                     Select::make('kecamatan')
                                         ->label('Kecamatan')
-                                        ->options(fn (Get $get) => $get('kabupaten') ? District::where('city_code', $get('kabupaten'))->pluck('name', 'code') : [])
+                                        ->options(fn(Get $get) => $get('kabupaten') ? District::where('city_code', $get('kabupaten'))->pluck('name', 'code') : [])
                                         ->searchable()
                                         ->live()
-                                        ->afterStateUpdated(fn (Set $set) => $set('desa', null)),
+                                        ->afterStateUpdated(fn(Set $set) => $set('desa', null)),
 
                                     Select::make('desa')
                                         ->label('Desa / Kelurahan')
-                                        ->options(fn (Get $get) => $get('kecamatan') ? Village::where('district_code', $get('kecamatan'))->pluck('name', 'code') : [])
+                                        ->options(fn(Get $get) => $get('kecamatan') ? Village::where('district_code', $get('kecamatan'))->pluck('name', 'code') : [])
                                         ->searchable(),
                                 ]),
 
@@ -165,7 +167,7 @@ class PendampingResource extends Resource
                         // ====================================================
                         Tabs\Tab::make('Dokumen & Berkas')
                             ->icon('heroicon-o-folder')
-                            ->hidden(fn (Get $get) => $get('role') !== 'pendamping')
+                            ->hidden(fn(Get $get) => $get('role') !== 'pendamping')
                             ->schema([
                                 // Info Bank
                                 Section::make('Info Bank & Pendidikan')
@@ -200,7 +202,7 @@ class PendampingResource extends Resource
                 Tables\Columns\TextColumn::make('kecamatan')
                     ->label('Wilayah Kecamatan')
                     ->formatStateUsing(
-                        fn ($state) => \Laravolt\Indonesia\Models\District::where('code', $state)->first()?->name ?? '-'
+                        fn($state) => \Laravolt\Indonesia\Models\District::where('code', $state)->first()?->name ?? '-'
                     )
                     ->sortable(),
 
@@ -209,7 +211,7 @@ class PendampingResource extends Resource
                     ->counts('anggotaBinaan') // Menghitung jumlah data dari relasi anggotaBinaan
                     ->label('Total Binaan')
                     ->badge()
-                    ->color(fn ($state) => $state > 0 ? 'success' : 'danger') // Merah jika 0, Hijau jika ada
+                    ->color(fn($state) => $state > 0 ? 'success' : 'danger') // Merah jika 0, Hijau jika ada
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('phone')
@@ -227,7 +229,7 @@ class PendampingResource extends Resource
                             ->modifyQueryUsing(function ($query) {
                                 return $query->where('role', 'pendamping');
                             })
-                            ->withFilename('Data_Pendamping_'.date('Y-m-d'))
+                            ->withFilename('Data_Pendamping_' . date('Y-m-d'))
                             ->withColumns([
                                 // Definisikan Kolom Custom agar Rapi
                                 Column::make('name')->heading('Nama Lengkap'),
@@ -245,13 +247,13 @@ class PendampingResource extends Resource
 
                                 // Data Bank (Penting untuk Laporan Keuangan)
                                 Column::make('nama_bank')->heading('Bank'),
-                                Column::make('nomor_rekening')->heading('No Rekening')->formatStateUsing(fn ($state) => ' '.$state),
+                                Column::make('nomor_rekening')->heading('No Rekening')->formatStateUsing(fn($state) => ' ' . $state),
                                 Column::make('nama_instansi')->heading('Instansi'),
 
                                 Column::make('akun_halal')->heading('Akun SiHalal'),
                                 Column::make('pass_akun_halal')->heading('Password Akun SiHalal'),
 
-                                Column::make('created_at')->heading('Tanggal Daftar')->formatStateUsing(fn ($state) => Carbon::parse($state)->format('d-m-Y H:i')),
+                                Column::make('created_at')->heading('Tanggal Daftar')->formatStateUsing(fn($state) => Carbon::parse($state)->format('d-m-Y H:i')),
                             ]),
                     ]),
 
@@ -271,7 +273,7 @@ class PendampingResource extends Resource
                     ->color('warning')
                     ->slideOver()
                     // Hanya Tampil untuk Admin & SuperAdmin
-                    ->visible(fn () => Auth::user()->isAdmin() || Auth::user()->isSuperAdmin()),
+                    ->visible(fn() => Auth::user()->isAdmin() || Auth::user()->isSuperAdmin()),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -354,7 +356,7 @@ class PendampingResource extends Resource
 
                             InfolistSection::make('Informasi Bank & Pendidikan')
                                 ->icon('heroicon-o-academic-cap')
-                                ->visible(fn ($record) => $record->role === 'pendamping')
+                                ->visible(fn($record) => $record->role === 'pendamping')
                                 ->schema([
                                     TextEntry::make('nama_bank')->label('Bank'),
                                     TextEntry::make('nomor_rekening')->label('No. Rekening')->copyable(),
@@ -378,7 +380,7 @@ class PendampingResource extends Resource
                                     TextEntry::make('phone')
                                         ->label('WhatsApp')
                                         ->icon('heroicon-m-phone')
-                                        ->url(fn ($state) => 'https://wa.me/'.preg_replace('/^0/', '62', $state), true)
+                                        ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                         ->color('success'),
                                     InfolistGrid::make(2)->schema([
                                         TextEntry::make('role')->badge()->color('warning'),
@@ -405,7 +407,7 @@ class PendampingResource extends Resource
                 // ========================================================
                 InfolistSection::make('Berkas Dokumen Pendamping')
                     ->icon('heroicon-o-folder-open')
-                    ->visible(fn ($record) => $record->role === 'pendamping')
+                    ->visible(fn($record) => $record->role === 'pendamping')
                     ->schema([
                         // Panggil helper function yang kita buat di bawah
                         self::getProxyImageEntry('file_pas_foto', 'Pas Foto'),
@@ -429,14 +431,14 @@ class PendampingResource extends Resource
     {
         return TextEntry::make($field)
             ->label($label)
-            ->formatStateUsing(fn ($state) => empty($state) ? '-' : new HtmlString("
+            ->formatStateUsing(fn($state) => empty($state) ? '-' : new HtmlString("
                 <div class='relative group overflow-hidden rounded-lg border border-gray-200 shadow-sm bg-gray-50'>
-                    <img src='".route('drive.image', ['path' => $state])."' 
+                    <img src='" . route('drive.image', ['path' => $state]) . "' 
                          alt='$label' 
                          class='w-full h-48 object-cover transition-transform duration-500 group-hover:scale-105' 
                          loading='lazy'>
                     
-                    <a href='".route('drive.image', ['path' => $state])."' 
+                    <a href='" . route('drive.image', ['path' => $state]) . "' 
                        target='_blank' 
                        class='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-white font-bold tracking-wide no-underline'>
                        <svg xmlns='http://www.w3.org/2000/svg' class='h-6 w-6 mr-2' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
