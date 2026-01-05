@@ -597,6 +597,13 @@ class PengajuanResource extends Resource
                                 $updateData['tagihan_id'] = $tagihanId;
                             }
 
+                            // ========================================================
+                            // [BARU] UPDATE TIMESTAMP VERIFIED_AT
+                            // ========================================================
+                            // Setiap kali verifikator menekan tombol simpan (approve/revisi/tolak),
+                            // kita catat waktu keputusannya.
+                            $updateData['verified_at'] = now();
+
                             // Update Status Pengajuan
                             $record->update($updateData);
                         });

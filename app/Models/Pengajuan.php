@@ -17,6 +17,10 @@ class Pengajuan extends Model
 
     protected $guarded = [];
 
+    protected $casts = [
+        'verified_at' => 'datetime', // Casting agar terbaca sebagai objek Carbon
+    ];
+
     // DEFINISI STATUS
     const STATUS_MENUNGGU = 'Menunggu Verifikasi';
 

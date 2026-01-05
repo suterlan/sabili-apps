@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Laporan;
 
 use App\Models\Pengajuan;
 use App\Models\User; // Import User
+use Carbon\Carbon;
 use Filament\Pages\Page;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
@@ -32,12 +33,13 @@ class LaporanPengajuan extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
-            ->query(Pengajuan::query()->latest()) // Urutkan dari yang terbaru
+            ->query(Pengajuan::query()->latest('verified_at')) // Urutkan dari yang terbaru
             ->columns([
-                Tables\Columns\TextColumn::make('created_at')
-                    ->label('Tanggal')
-                    ->date('d/m/Y')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('verified_at')
+                    ->label('Tgl. Verifikasi')
+                    ->date('d/m/Y H:i') // Tambah jam agar lebih detail
+                    ->sortable()
+                    ->placeholder('Belum Verifikasi'),
 
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Pelaku Usaha')
@@ -113,7 +115,7 @@ class LaporanPengajuan extends Page implements HasTable
                     ->form([
                         Grid::make(2)
                             ->schema([
-                                DatePicker::make('created_from')
+                                DatePicker::make('verified_from')
                                     ->label('Dari Tanggal')
                                     ->default(now()->startOfDay()) // Default hari ini (Solusi Laporan Harian)
                                     ->native(false)
@@ -122,7 +124,7 @@ class LaporanPengajuan extends Page implements HasTable
                                     ->prefixIcon('heroicon-m-calendar-days')
                                     ->maxDate(now()),
 
-                                DatePicker::make('created_until')
+                                DatePicker::make('verified_until')
                                     ->label('Sampai Tanggal')
                                     ->default(now()->endOfDay()) // Default hari ini
                                     ->native(false)
@@ -135,24 +137,34 @@ class LaporanPengajuan extends Page implements HasTable
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
                             ->when(
-                                $data['created_from'],
-                                fn(Builder $query, $date): Builder => $query->whereDate('created_at', '>=', $date),
+                                $data['verified_from'],
+                                fn(Builder $query, $date): Builder => $query->where(
+                                    'verified_at',
+                                    '>=',
+                                    // Ubah string tanggal menjadi object Carbon jam 00:00:00
+                                    Carbon::parse($date)->startOfDay()
+                                ),
                             )
                             ->when(
-                                $data['created_until'],
-                                fn(Builder $query, $date): Builder => $query->whereDate('created_at', '<=', $date),
+                                $data['verified_until'],
+                                fn(Builder $query, $date): Builder => $query->where(
+                                    'verified_at',
+                                    '<=',
+                                    // Ubah string tanggal menjadi object Carbon jam 23:59:59
+                                    Carbon::parse($date)->endOfDay()
+                                ),
                             );
                     })
                     // Memberi info di atas tabel filter apa yang aktif
                     ->indicateUsing(function (array $data): array {
                         $indicators = [];
 
-                        if ($data['created_from'] ?? null) {
-                            $indicators['created_from'] = 'Dari: ' . \Carbon\Carbon::parse($data['created_from'])->format('d M Y');
+                        if ($data['verified_from'] ?? null) {
+                            $indicators['verified_from'] = 'Dari: ' . Carbon::parse($data['verified_from'])->format('d M Y');
                         }
 
-                        if ($data['created_until'] ?? null) {
-                            $indicators['created_until'] = 'Sampai: ' . \Carbon\Carbon::parse($data['created_until'])->format('d M Y');
+                        if ($data['verified_until'] ?? null) {
+                            $indicators['verified_until'] = 'Sampai: ' . Carbon::parse($data['verified_until'])->format('d M Y');
                         }
 
                         return $indicators;
@@ -169,7 +181,7 @@ class LaporanPengajuan extends Page implements HasTable
                     ->exports([
                         ExcelExport::make()
                             ->withColumns([
-                                Column::make('created_at')->heading('Tanggal'),
+                                Column::make('verified_at')->heading('Tgl. Verifikasi'),
                                 Column::make('user.name')->heading('Pelaku Usaha'),
                                 Column::make('user.merk_dagang')->heading('Merk Dagang'),
                                 Column::make('pendamping.name')->heading('Pendamping'),

@@ -7,87 +7,106 @@ use Filament\Widgets\ChartWidget;
 use Flowframe\Trend\Trend;
 use Flowframe\Trend\TrendValue;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
 
 class PengajuanChart extends ChartWidget
 {
     protected static ?int $sort = 3;
+    protected int | string | array $columnSpan = 'full';
+    protected static ?string $pollingInterval = '15s';
+    public ?string $filter = 'month';
 
-    // Kita buat judulnya dinamis agar admin tahu ini data wilayah siapa
     public function getHeading(): string
     {
-        return 'Tren Pengajuan Masuk (30 Hari Terakhir)';
+        return 'Tren Pengajuan Masuk';
     }
 
-    protected int | string | array $columnSpan = 'full';
+    protected function getFilters(): ?array
+    {
+        return [
+            'week' => 'Minggu Ini',
+            'month' => 'Bulan Ini',
+            'year' => 'Tahun Ini',
+        ];
+    }
 
-    protected static ?string $pollingInterval = '15s';
-
-    // =========================================================
-    // 1. FILTER VISIBILITY
-    // =========================================================
     public static function canView(): bool
     {
         $user = auth()->user();
-        // Hanya Superadmin, Admin, dan Koordinator
         return $user->isSuperAdmin() || $user->isAdmin() || $user->isKoordinator();
     }
 
-    // =========================================================
-    // 2. LOGIC DATA (FILTER WILAYAH)
-    // =========================================================
     protected function getData(): array
     {
-        $user = Auth::user();
+        $user = auth()->user();
+        $activeFilter = $this->filter;
 
-        // 1. Inisialisasi Query
+        $startDate = match ($activeFilter) {
+            'week' => now()->subDays(7),
+            'month' => now()->subDays(30),
+            'year' => now()->startOfYear(),
+            default => now()->subDays(30),
+        };
+        $endDate = now();
+
+        // 1. QUERY DASAR (Filter Wilayah/Role)
         $query = Pengajuan::query();
 
-        // 2. FILTER BERDASARKAN ROLE
-
         if ($user->isSuperAdmin()) {
-            // A. SUPERADMIN: Tidak ada filter (Global)
-            // Biarkan query kosong agar mengambil semua data
+            // No filter
         } elseif ($user->isAdmin()) {
-            // B. ADMIN: Filter berdasarkan Array assigned_districts
             if ($user->hasAssignedDistricts()) {
                 $query->whereHas('user', function (Builder $q) use ($user) {
                     $q->whereIn('kecamatan', $user->assigned_districts);
                 });
             } else {
-                // Jika Admin belum punya wilayah tugas, grafik kosong
                 $query->whereRaw('1 = 0');
             }
         } elseif ($user->isKoordinator()) {
-            // C. KOORDINATOR: Filter berdasarkan 1 Kecamatan user
             $kodeKecamatan = $user->kecamatan;
             $query->whereHas('user', function (Builder $q) use ($kodeKecamatan) {
                 $q->where('kecamatan', $kodeKecamatan);
             });
         }
 
-        // 3. Eksekusi Trend (Sama untuk semua role, hanya query-nya yang beda isi)
-        $data = Trend::query($query)
-            ->between(
-                start: now()->subDays(30),
-                end: now(),
-            )
+        // 2. AMBIL DATA TREND
+
+        // A. Data Total (Semua Status)
+        // Kita pakai clone() agar $query asli tidak berubah
+        $dataTotal = Trend::query($query->clone())
+            ->dateColumn('created_at') // <--- Explicit: Gunakan Tanggal Pembuatan
+            ->between(start: $startDate, end: $endDate)
             ->perDay()
             ->count();
 
-        // 4. Return Data Chart
+        // B. Data Khusus "Pengajuan Terkirim" (Status Dikirim)
+        // Kita pakai clone() lagi lalu tambahkan where status
+        $dataTerkirim = Trend::query($query->clone()->where('status_verifikasi', Pengajuan::STATUS_PENGAJUAN_DIKIRIM))
+            ->dateColumn('verified_at') // date status diubah    
+            ->between(start: $startDate, end: $endDate)
+            ->perDay()
+            ->count();
+
+        // 3. RETURN MULTI DATASET
         return [
             'datasets' => [
                 [
-                    'label' => 'Jumlah Pengajuan Baru',
-                    'data' => $data->map(fn(TrendValue $value) => $value->aggregate),
-                    'borderColor' => '#3b82f6', // Biru Filament
-                    'backgroundColor' => 'rgba(59, 130, 246, 0.1)', // Arsiran transparan
+                    'label' => 'Total Masuk (Semua Status)',
+                    'data' => $dataTotal->map(fn(TrendValue $value) => $value->aggregate),
+                    'borderColor' => '#9ca3af', // Warna Abu-abu (Netral)
+                    'backgroundColor' => 'rgba(156, 163, 175, 0.1)',
                     'fill' => true,
-                    'tension' => 0.4, // Curve halus
+                    'tension' => 0.4,
+                ],
+                [
+                    'label' => 'Status Pengajuan Terkirim',
+                    'data' => $dataTerkirim->map(fn(TrendValue $value) => $value->aggregate),
+                    'borderColor' => '#3b82f6', // Biru
+                    'backgroundColor' => 'rgba(16, 185, 129, 0.2)',
+                    'fill' => true,
+                    'tension' => 0.4,
                 ],
             ],
-            'labels' => $data->map(fn(TrendValue $value) => $value->date),
+            'labels' => $dataTotal->map(fn(TrendValue $value) => $value->date),
         ];
     }
 
