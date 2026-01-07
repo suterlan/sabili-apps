@@ -110,6 +110,20 @@ class Pengajuan extends Model
         ];
     }
 
+    public static function getStatInvoice(): array
+    {
+        return [
+            self::STATUS_INVOICE,
+        ];
+    }
+
+    public static function getStatSelesai(): array
+    {
+        return [
+            self::STATUS_SELESAI,
+        ];
+    }
+
     public static function getStatInvoiceSelesai(): array
     {
         return [

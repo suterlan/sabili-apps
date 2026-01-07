@@ -141,7 +141,7 @@ class PengajuanResource extends Resource
                     }),
 
                 // Action Detail pada Tabel
-                \Filament\Tables\Actions\ViewAction::make()
+                Tables\Actions\ViewAction::make()
                     ->label('Detail')
                     ->slideOver()
                     ->color('info')
@@ -239,10 +239,15 @@ class PengajuanResource extends Resource
 
                     // Tampilkan tombol ini hanya untuk Verifikator yang sedang memegang tugas ini
                     ->visible(function (Pengajuan $record, $livewire) {
-                        $isMyTask = auth()->id() === $record->verificator_id;
-                        $bukanTabHistory = isset($livewire->activeTab) && $livewire->activeTab !== 'semua';
 
-                        return $isMyTask && $bukanTabHistory;
+                        $tab = $livewire->activeTab ?? '';
+
+                        // Sembunyikan tombol Edit jika di tab invoice, selesai dan semua
+                        if (in_array($tab, ['siap_invoice', 'invoice', 'selesai', 'semua'])) {
+                            return false;
+                        }
+
+                        return true;
                     })
                     // 2. ISI DATA AWAL (PRE-FILL)
                     ->mountUsing(function (Forms\ComponentContainer $form, Pengajuan $record) {
@@ -406,23 +411,36 @@ class PengajuanResource extends Resource
                     ->modalWidth('2xl') // Sesuaikan lebar slideover
 
                     ->visible(function (Pengajuan $record, $livewire) {
-                        // Syarat 1: User login adalah verifikatornya
-                        $isMyTask = auth()->id() === $record->verificator_id;
-
+                        $user = auth()->user();
                         // Cek Tab
                         $tab = $livewire->activeTab ?? '';
 
-                        // Button muncul di tab 'siap_invoice' ATAU tab kerjaan standar
-                        // Tapi JANGAN muncul di tab 'selesai' atau 'semua' (history)
-                        // Dan jangan muncul jika status sudah Invoice/Selesai (sudah final di tahap ini)
-                        $isTabAllowed = in_array($tab, ['tugas_saya', 'revisi', 'proses', 'dikirim', 'siap_invoice']);
+                        $isSuperAdmin = $user->isSuperAdmin();
 
-                        $statusFinal = in_array($record->status_verifikasi, [
-                            Pengajuan::STATUS_INVOICE,
-                            Pengajuan::STATUS_SELESAI,
-                        ]);
+                        // 2. Cek apakah user adalah pemilik data (Verifikator Asli)
+                        $isVerificatorAsli = $user->id === $record->verificator_id;
 
-                        return $isMyTask && $isTabAllowed && ! $statusFinal;
+                        // --- ATURAN LOGIKA PER TAB ---
+                        // A. Tab Selesai -> TOMBOL HILANG TOTAL
+                        if ($tab === 'selesai') {
+                            return false;
+                        }
+
+                        // B. Tab Siap Invoice -> HANYA SUPER ADMIN
+                        // Verifikator asli tidak boleh klik, harus Super Admin
+                        if (in_array($tab, ['siap_invoice', 'invoice'])) {
+                            return $isSuperAdmin;
+                        }
+
+                        // C. Tab Kerja Lainnya (Revisi, Proses, Dikirim) -> HANYA VERIFIKATOR ASLI
+                        // Super admin tidak boleh ganggu proses verifikasi awal, atau boleh (opsional)
+                        // Di sini kita set hanya verifikator asli agar sesuai flow
+                        if (in_array($tab, ['revisi', 'proses', 'dikirim'])) {
+                            return $isVerificatorAsli;
+                        }
+
+                        return false; // Default hidden
+
                     })
                     ->form([
                         // --- BAGIAN 3: FORM INPUT VERIFIKASI ---
@@ -440,7 +458,7 @@ class PengajuanResource extends Resource
                                         $currentTab = $livewire->activeTab ?? '';
                                         // JIKA DI TAB 'SIAP INVOICE'
                                         // Opsinya khusus: Lanjut ke Invoice atau Langsung Selesai
-                                        if ($currentTab === 'siap_invoice') {
+                                        if (in_array($currentTab, ['siap_invoice', 'invoice'])) {
                                             return [
                                                 Pengajuan::STATUS_INVOICE => 'Invoice Diajukan',
                                                 Pengajuan::STATUS_SELESAI => 'Selesai / Lunas',

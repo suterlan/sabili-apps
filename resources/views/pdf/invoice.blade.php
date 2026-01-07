@@ -70,7 +70,7 @@
             letter-spacing: 2px;
             position: absolute;
             right: 50px;
-            top: 150px;
+            top: 200px;
         }
 
         .paid {
@@ -107,13 +107,16 @@
 
     <div class="bill-to">
         <strong>Ditujukan Kepada:</strong><br>
-        {{-- Mengambil nama dari perwakilan pengajuan pertama --}}
-        {{ $tagihan->pengajuan->user->name ?? 'Pelaku Usaha' }}<br>
-        @if ($tagihan->pengajuan->user->merk_dagang)
-            {{ $tagihan->pengajuan->user->merk_dagang }}<br>
-        @endif
+        {{-- Ubah jadi nama pendamping --}}
+        {{ $tagihan->pengajuan->user->pendamping->name ?? 'Pendamping' }}<br>
+
         {{-- Tambahkan alamat jika ada di database user --}}
-        {{ $tagihan->pengajuan->user->alamat ?? '' }}
+        {{ $tagihan->pengajuan->user->pendamping->address ?? '' }}</br>
+        {{ $tagihan->pengajuan->user->pendamping->village->name ?? '' }},
+        {{ $tagihan->pengajuan->user->pendamping->district->name ?? '' }},
+        {{ $tagihan->pengajuan->user->pendamping->city->name ?? '' }},
+        {{ $tagihan->pengajuan->user->pendamping->province->name ?? '' }}
+
     </div>
 
     <table>

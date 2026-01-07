@@ -69,10 +69,13 @@ class ListPengajuans extends ListRecords
         // Terapkan filter wilayah untuk badge jika bukan superadmin
         $applyRegionFilter($badgeAntrian);
 
-        $tabs['antrian'] = Tab::make('Antrian Masuk')
+        $tabs['antrian'] = Tab::make('Antrian')
             ->icon('heroicon-m-inbox-stack')
             ->badge($badgeAntrian->count()) // Badge tetap menghitung TOTAL antrian (misal: 50)
-            ->modifyQueryUsing(function (Builder $query) use ($applyRegionFilter) {
+            ->modifyQueryUsing(function (Builder $query) use ($applyRegionFilter, $isSuperAdmin) {
+                // 1. Tentukan Limit Berdasarkan Role
+                // Jika Super Admin = 5, Jika Verifikator biasa = 1
+                $limitData = $isSuperAdmin ? 5 : 1;
 
                 // 1. Buat Query Terpisah untuk mencari ID (Clone logic filter)
                 // Kita tidak bisa pakai $query langsung karena akan konflik dengan query utama tabel
@@ -83,7 +86,7 @@ class ListPengajuans extends ListRecords
 
                 // 3. Ambil 5 ID teratas (FIFO - Terlama duluan)
                 $top5Ids = $idsQuery->orderBy('created_at', 'asc')
-                    ->limit(5)
+                    ->limit($limitData)
                     ->pluck('id') // Ambil Array ID-nya saja
                     ->toArray();
 
@@ -150,14 +153,26 @@ class ListPengajuans extends ListRecords
             });
 
         // TAB SELESAI = status invoice diterbitkan dan status selesai
-        $tabs['selesai'] = Tab::make('Invoice & Selesai')
+        $tabs['invoice'] = Tab::make('Invoice')
+            ->icon('heroicon-m-document-currency-dollar')
+            ->badgeColor('success')
+            ->badge(function () use ($filterByVerificator) {
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatInvoice()))->count();
+            })
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatInvoice())->latest();
+                return $filterByVerificator($query);
+            });
+
+        // TAB SELESAI = status invoice diterbitkan dan status selesai
+        $tabs['selesai'] = Tab::make('Selesai')
             ->icon('heroicon-m-check-badge')
             ->badgeColor('success')
             ->badge(function () use ($filterByVerificator) {
-                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai()))->count();
+                return $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatSelesai()))->count();
             })
             ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
-                $query->whereIn('status_verifikasi', Pengajuan::getStatInvoiceSelesai())->latest();
+                $query->whereIn('status_verifikasi', Pengajuan::getStatSelesai())->latest();
                 return $filterByVerificator($query);
             });
 
