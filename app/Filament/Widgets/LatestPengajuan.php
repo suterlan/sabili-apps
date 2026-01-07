@@ -46,12 +46,6 @@ class LatestPengajuan extends BaseWidget
                 $query->whereHas('user', function (Builder $q) use ($user) {
                     $q->whereIn('kecamatan', $user->assigned_districts);
                 });
-            } else {
-                // KONDISI SECURITY:
-                // Jika Admin tidak punya wilayah tugas (array kosong/null),
-                // Maka dia TIDAK BOLEH melihat antrian apapun.
-                // Kita paksa query return kosong.
-                $query->whereRaw('1 = 0');
             }
         }
 

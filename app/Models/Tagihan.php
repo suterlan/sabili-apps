@@ -13,9 +13,12 @@ class Tagihan extends Model
         'pendamping_id',
         'total_nominal',
         'link_pembayaran',
-        'status_pembayaran',
+        'status_pembayaran', // DIBAYAR, BELUM DIBAYAR
         'tanggal_terbit',
     ];
+
+    const STATUS_DIBAYAR = 'DIBAYAR';
+    const STATUS_BELUM_DIBAYAR = 'BELUM DIBAYAR';
 
     // RELASI UTAMA (1 Invoice bisa punya Banyak Pengajuan)
     // Gunakan ini jika ingin meloop semua produk dalam 1 invoice

@@ -23,6 +23,7 @@ use Filament\Tables;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -193,9 +194,9 @@ class PengajuanResource extends Resource
                         }
 
                         // --- SKENARIO ADMIN BIASA ---
-                        // Admin hanya boleh membatalkan di tab 'tugas_saya'
+                        // Admin hanya boleh membatalkan di tab 'proses'
                         // Dan pastikan itu tugas miliknya sendiri
-                        if ($activeTab === 'tugas_saya') {
+                        if ($activeTab === 'proses') {
                             return $record->verificator_id === $user->id;
                         }
 
@@ -485,7 +486,7 @@ class PengajuanResource extends Resource
                                     ]),
 
                                 // -------------------------------------------------------------
-                                // FIELD KHUSUS INVOICE (Hanya muncul jika pilih status INVOICE)
+                                // FIELD KHUSUS INVOICE (Hanya muncul jika pilih status INVOICE / SELESAI)
                                 // -------------------------------------------------------------
                                 Section::make('Data Tagihan (Invoice)')
                                     ->description('Lengkapi data pembayaran untuk pelaku usaha.')
@@ -510,6 +511,7 @@ class PengajuanResource extends Resource
 
                                         TextInput::make('total_nominal')
                                             ->label('Total Tagihan (Rp)')
+                                            ->placeholder('Nominal per PU')
                                             ->prefix('Rp')
                                             ->numeric()
                                             ->required(),
@@ -524,12 +526,19 @@ class PengajuanResource extends Resource
                                         Hidden::make('status_pembayaran')->default('BELUM DIBAYAR'),
                                     ])
                                     // LOGIC TAMPIL:
-                                    // 1. Harus di tab 'siap_invoice'
-                                    // 2. Status yang dipilih harus 'STATUS_INVOICE'
-                                    ->visible(
-                                        fn(Get $get, $livewire) => ($livewire->activeTab ?? '') === 'siap_invoice' &&
-                                            $get('status_verifikasi') === Pengajuan::STATUS_INVOICE
-                                    ),
+                                    // Muncul jika di tab 'siap_invoice' DAN (Status Invoice ATAU Status Selesai)
+                                    ->visible(function (Get $get, $livewire) {
+                                        $currentTab = $livewire->activeTab ?? '';
+                                        $status = $get('status_verifikasi');
+
+                                        // Cek apakah statusnya Invoice atau Selesai
+                                        $isInvoiceOrFinish = in_array($status, [
+                                            Pengajuan::STATUS_INVOICE,
+                                            Pengajuan::STATUS_SELESAI
+                                        ]);
+
+                                        return $currentTab === 'siap_invoice' && $isInvoiceOrFinish;
+                                    }),
 
                                 // -------------------------------------------------------------
                                 // FIELD CATATAN REVISI (Standard)
@@ -546,33 +555,76 @@ class PengajuanResource extends Resource
 
                             ]),
                     ])
-                    ->action(function (Pengajuan $record, array $data) {
-                        // Gunakan Database Transaction agar aman
-                        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+                    ->action(function (Pengajuan $record, array $data, Action $action) {
+                        // 1. VALIDASI DATA PELAKU USAHA (USER)
+                        // Hanya dijalankan jika Admin memilih status "Sertifikat Diterbitkan"
+                        if ($data['status_verifikasi'] === Pengajuan::STATUS_SERTIFIKAT) {
+
+                            $user = $record->user; // Mengambil model User
+                            $missing = [];
+
+                            // Cek Dokumen Legalitas & Akun (Wajib)
+                            if (empty($user->nomor_nib))       $missing[] = 'Nomor NIB';
+                            if (empty($user->file_foto_nib))   $missing[] = 'Foto/File NIB';
+                            if (empty($user->akun_halal))      $missing[] = 'Akun SiHalal';
+                            if (empty($user->pass_akun_halal)) $missing[] = 'Password SiHalal';
+
+                            // Cek Data Produk (Wajib untuk Sertifikat)
+                            if (empty($user->merk_dagang))      $missing[] = 'Merk Dagang';
+                            if (empty($user->file_foto_produk)) $missing[] = 'Foto Produk';
+                            if (empty($user->file_foto_usaha))  $missing[] = 'Foto Tempat Usaha';
+                            if (empty($user->file_foto_bersama))  $missing[] = 'Foto Bersama Pendamping';
+
+                            // JIKA ADA DATA KOSONG -> STOP PROSES
+                            if (count($missing) > 0) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Data Pelaku Usaha Belum Lengkap')
+                                    ->body('Mohon lengkapi: ' . implode(', ', $missing) . ' terlebih dulu sebelum menerbitkan sertifikat.')
+                                    ->persistent()
+                                    ->persistent()
+                                    ->send();
+
+                                // STOP PROSES: Jangan tutup modal, biarkan user memperbaiki/batal
+                                $action->halt();
+                                return;
+                            }
+                        }
+
+                        // 2. PROSES UPDATE DATABASE (Jika Lolos Validasi)
+                        DB::transaction(function () use ($record, $data) {
 
                             $tagihanId = null; // Variabel penampung ID
 
-                            // A. Jika Status = INVOICE, Buat Data Tagihan
-                            if ($data['status_verifikasi'] === Pengajuan::STATUS_INVOICE) {
-                                // Cek apakah data invoice ada di array $data
-                                if (isset($data['nomor_invoice']) && ! empty($data['total_nominal'])) {
-                                    // Cari berdasarkan 'nomor_invoice'. 
-                                    // Jika ketemu -> Update datanya. Jika tidak ketemu -> Buat baru.
-                                    $tagihan = \App\Models\Tagihan::updateOrCreate(
-                                        ['nomor_invoice' => $data['nomor_invoice']], // Kunci pencarian (Unique)
-                                        [
-                                            'pendamping_id'     => $record->pendamping_id,
-                                            'total_nominal'     => $data['total_nominal'],
-                                            'link_pembayaran'   => $data['link_pembayaran'] ?? null,
-                                            'tanggal_terbit'    => $data['tanggal_terbit'],
-                                            // Pastikan status default BELUM DIBAYAR jika baru dibuat
-                                            // Jika update, kita bisa biarkan status lama atau reset (tergantung kebijakan)
-                                            'status_pembayaran' => 'BELUM DIBAYAR',
-                                        ]
-                                    );
-                                    // Simpan ID tagihan untuk relasi
-                                    $tagihanId = $tagihan->id;
-                                }
+                            // -------------------------------------------------------------
+                            // PERBAIKAN 2: LOGIKA PENYIMPANAN TAGIHAN
+                            // -------------------------------------------------------------
+                            // Jalankan jika status INVOICE atau SELESAI
+                            // DAN pastikan data invoice (total_nominal) benar-benar diisi di form
+                            $isInvoiceAction = in_array($data['status_verifikasi'], [
+                                Pengajuan::STATUS_INVOICE,
+                                Pengajuan::STATUS_SELESAI
+                            ]);
+
+                            // Cek 'total_nominal' untuk memastikan form invoice tadi muncul dan diisi
+                            if ($isInvoiceAction && !empty($data['total_nominal'])) {
+                                // Cari berdasarkan 'nomor_invoice'. 
+                                // Jika ketemu -> Update datanya. Jika tidak ketemu -> Buat baru.
+                                $tagihan = \App\Models\Tagihan::updateOrCreate(
+                                    ['nomor_invoice' => $data['nomor_invoice']], // Kunci pencarian (Unique)
+                                    [
+                                        'pendamping_id'     => $record->pendamping_id,
+                                        'total_nominal'     => $data['total_nominal'],
+                                        'link_pembayaran'   => $data['link_pembayaran'] ?? null,
+                                        'tanggal_terbit'    => $data['tanggal_terbit'],
+                                        // Jika langsung SELESAI, apakah otomatis LUNAS?
+                                        // Biasanya tetap 'BELUM DIBAYAR' dulu agar user melakukan konfirmasi bayar terpisah
+                                        // atau bisa diubah logic-nya di sini jika mau otomatis lunas.
+                                        'status_pembayaran' => 'BELUM DIBAYAR',
+                                    ]
+                                );
+                                // Simpan ID tagihan untuk relasi
+                                $tagihanId = $tagihan->id;
                             }
                             // B. Bersihkan data invoice dari array $data sebelum update ke tabel pengajuan
                             // (Agar tidak error "Column not found" di tabel pengajuan)
@@ -614,6 +666,8 @@ class PengajuanResource extends Resource
                             $pesan = 'Sertifikat berhasil diterbitkan & diupload.';
                         } elseif ($data['status_verifikasi'] === Pengajuan::STATUS_INVOICE) {
                             $pesan = 'Status diperbarui & Invoice diterbitkan.';
+                        } elseif ($data['status_verifikasi'] === Pengajuan::STATUS_SELESAI) {
+                            $pesan = 'Pengajuan Selesai & Invoice tercatat.';
                         }
 
                         // 2. Kirim Notifikasi
@@ -808,7 +862,38 @@ class PengajuanResource extends Resource
                             'md' => 2,
                         ])->schema([
 
-                            // --- KARTU 1: FOTO PRODUK ---
+                            // --- KARTU 1: KTP ---
+                            \Filament\Infolists\Components\Group::make([
+                                \Filament\Infolists\Components\ImageEntry::make('user.file_ktp')
+                                    ->hiddenLabel()
+                                    ->state(function ($record) {
+                                        $path = $record->user->file_ktp;
+
+                                        // Jika file tidak ada, kembalikan null
+                                        if (! $path) {
+                                            return null;
+                                        }
+
+                                        // Return URL ke route proxy yang kita buat di langkah 1
+                                        return route('drive.image', ['path' => $path]);
+                                    })
+                                    ->height(250)->width('100%')
+                                    ->extraImgAttributes(['class' => 'object-cover w-full h-full rounded-t-lg']),
+
+                                \Filament\Infolists\Components\Actions::make([
+                                    \Filament\Infolists\Components\Actions\Action::make('download_ktp')
+                                        ->label('Download Foto KTP')
+                                        ->icon('heroicon-m-arrow-down-tray')
+                                        ->color('primary')
+                                        ->action(function ($record) {
+                                            // Ini akan memicu download langsung di browser user
+                                            return Storage::disk('google')->download($record->user->file_ktp);
+                                        }),
+                                ])->fullWidth(),
+                            ])
+                                ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
+
+                            // --- KARTU 2: FOTO PRODUK ---
                             \Filament\Infolists\Components\Group::make([
                                 \Filament\Infolists\Components\ImageEntry::make('user.file_foto_produk')
                                     ->hiddenLabel()
@@ -843,7 +928,7 @@ class PengajuanResource extends Resource
                             ])
                                 ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
 
-                            // --- KARTU 2: FOTO BERSAMA ---
+                            // --- KARTU 3: FOTO BERSAMA ---
                             \Filament\Infolists\Components\Group::make([
                                 \Filament\Infolists\Components\ImageEntry::make('user.file_foto_bersama')
                                     ->hiddenLabel()
@@ -863,7 +948,7 @@ class PengajuanResource extends Resource
 
                                 \Filament\Infolists\Components\Actions::make([
                                     \Filament\Infolists\Components\Actions\Action::make('download_bersama')
-                                        ->label('Download Foto Bersama')
+                                        ->label('Download Foto Bersama Pendamping')
                                         ->icon('heroicon-m-arrow-down-tray')
                                         ->color('primary')
                                         ->action(function ($record) {
@@ -874,7 +959,7 @@ class PengajuanResource extends Resource
                             ])
                                 ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
 
-                            // --- KARTU 3: TEMPAT USAHA ---
+                            // --- KARTU 4: TEMPAT USAHA ---
                             \Filament\Infolists\Components\Group::make([
                                 \Filament\Infolists\Components\ImageEntry::make('user.file_foto_usaha')
                                     ->hiddenLabel()
@@ -900,37 +985,6 @@ class PengajuanResource extends Resource
                                         ->action(function ($record) {
                                             // Ini akan memicu download langsung di browser user
                                             return Storage::disk('google')->download($record->user->file_foto_usaha);
-                                        }),
-                                ])->fullWidth(),
-                            ])
-                                ->extraAttributes(['class' => 'bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col']),
-
-                            // --- KARTU 4: KTP ---
-                            \Filament\Infolists\Components\Group::make([
-                                \Filament\Infolists\Components\ImageEntry::make('user.file_ktp')
-                                    ->hiddenLabel()
-                                    ->state(function ($record) {
-                                        $path = $record->user->file_ktp;
-
-                                        // Jika file tidak ada, kembalikan null
-                                        if (! $path) {
-                                            return null;
-                                        }
-
-                                        // Return URL ke route proxy yang kita buat di langkah 1
-                                        return route('drive.image', ['path' => $path]);
-                                    })
-                                    ->height(250)->width('100%')
-                                    ->extraImgAttributes(['class' => 'object-cover w-full h-full rounded-t-lg']),
-
-                                \Filament\Infolists\Components\Actions::make([
-                                    \Filament\Infolists\Components\Actions\Action::make('download_ktp')
-                                        ->label('Download Foto KTP')
-                                        ->icon('heroicon-m-arrow-down-tray')
-                                        ->color('primary')
-                                        ->action(function ($record) {
-                                            // Ini akan memicu download langsung di browser user
-                                            return Storage::disk('google')->download($record->user->file_ktp);
                                         }),
                                 ])->fullWidth(),
                             ])

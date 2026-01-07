@@ -170,7 +170,7 @@ class AnggotaResource extends Resource
                                     })
                                     ->searchable()
                                     ->live()
-                                    ->afterStateUpdated(fn (Set $set) => $set('desa', null))
+                                    ->afterStateUpdated(fn(Set $set) => $set('desa', null))
                                     ->required(),
 
                                 // 4. DESA
@@ -232,7 +232,7 @@ class AnggotaResource extends Resource
                                     self::getUploadGroup('file_foto_usaha', 'Tempat Usaha', 'tempat_usaha', $form),
 
                                     // 5. BERSAMA PENDAMPING
-                                    self::getUploadGroup('file_foto_bersama', 'Foto Bersama', 'foto_bersama', $form),
+                                    self::getUploadGroup('file_foto_bersama', 'Foto Bersama Pendamping', 'foto_bersama', $form),
 
                                 ])->columns(2),
                         ]),
@@ -261,11 +261,11 @@ class AnggotaResource extends Resource
                     ),
 
                 // HIDDEN FIELDS (Diluar Wizard agar tetap ter-submit)
-                Forms\Components\Hidden::make('pendamping_id')->default(fn () => Auth::id()),
+                Forms\Components\Hidden::make('pendamping_id')->default(fn() => Auth::id()),
                 Forms\Components\Hidden::make('role')->default('member'),
                 Forms\Components\Hidden::make('password')
-                    ->default(fn () => Hash::make('12345678'))
-                    ->dehydrated(fn (string $context): bool => $context === 'create'),
+                    ->default(fn() => Hash::make('12345678'))
+                    ->dehydrated(fn(string $context): bool => $context === 'create'),
 
             ]);
     }
@@ -306,7 +306,7 @@ class AnggotaResource extends Resource
                     ->label('Status')
                     ->badge()
                     ->placeholder('Belum Diajukan') // Jika null
-                    ->color(fn ($state) => match ($state) {
+                    ->color(fn($state) => match ($state) {
                         // Merah (Error/Masalah)
                         Pengajuan::STATUS_NIK_INVALID,
                         Pengajuan::STATUS_UPLOAD_NIB,
@@ -340,7 +340,7 @@ class AnggotaResource extends Resource
                     ->searchable()
                     // Kolom ini HANYA MUNCUL untuk Superadmin, Admin & Koordinator
                     // Pendamping tidak perlu lihat (karena pasti namanya sendiri)
-                    ->visible(fn () => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin() || Auth::user()->isKoordinator()),
+                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin() || Auth::user()->isKoordinator()),
             ])
             ->filters([
                 // --- 1. FILTER STATUS (PENTING AGAR WIDGET BISA DIKLIK) ---
@@ -365,11 +365,11 @@ class AnggotaResource extends Resource
                     })
                     ->searchable()
                     ->preload()
-                    ->visible(fn () => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
+                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
 
                 Tables\Filters\Filter::make('wilayah_belum_lengkap')
                     ->label('Wilayah Belum Lengkap')
-                    ->query(fn (Builder $query): Builder => $query->where(function ($q) {
+                    ->query(fn(Builder $query): Builder => $query->where(function ($q) {
                         // Cari yang provinsi ATAU kabupatennya kosong
                         $q->whereNull('provinsi')
                             ->orWhereNull('kabupaten')
@@ -385,11 +385,96 @@ class AnggotaResource extends Resource
                     ->color('info'),  // Opsional ganti warna
 
                 Tables\Actions\EditAction::make()->label('')
-                    ->hidden(fn () => auth()->user()->isKoordinator()),
+                    ->hidden(fn() => auth()->user()->isKoordinator()),
                 // Superadmin/Admin boleh delete atau tidak?
                 // Jika tidak boleh delete, tambahkan ->visible(...) di sini juga.
                 Tables\Actions\DeleteAction::make()->label('')
-                    ->hidden(fn () => auth()->user()->isKoordinator()),
+                    ->hidden(fn() => auth()->user()->isKoordinator()),
+
+                // --- ACTION BARU: SUPERADMIN ASSIGN ADMIN ---
+                Tables\Actions\Action::make('assign_verificator')
+                    ->label('Tugaskan Admin')
+                    ->icon('heroicon-m-user-plus') // Icon orang ditambah
+                    ->color('warning') // Warna kuning/oranye biar beda
+                    ->modalWidth('md')
+                    ->form([
+                        \Filament\Forms\Components\Select::make('verificator_id')
+                            ->label('Pilih Admin / Verifikator')
+                            ->options(function () {
+                                // Ambil daftar user yang Role-nya Admin
+                                // Sesuaikan 'role', 'admin' dengan kolom di database Anda
+                                return \App\Models\User::where('role', 'admin')
+                                    ->pluck('name', 'id');
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->helperText('Pengajuan akan langsung berstatus "Diproses" oleh admin ini.'),
+                    ])
+                    // LOGIC VISIBILITY
+                    ->visible(function (User $record) {
+                        // 1. Wajib Superadmin
+                        if (! auth()->user()->isSuperAdmin()) {
+                            return false;
+                        }
+
+                        // 2. Cek Status Terakhir
+                        $statusTerakhir = $record->latestPengajuan?->status_verifikasi;
+
+                        // Jika belum pernah ada pengajuan, tombol MUNCUL (True)
+                        if (is_null($statusTerakhir)) {
+                            return true;
+                        }
+
+                        // Daftar status yang dianggap "Sudah Selesai/Final"
+                        // Tombol akan DISEMBUNYIKAN jika statusnya ada di sini
+                        $statusFinal = [
+                            Pengajuan::STATUS_SERTIFIKAT,
+                            Pengajuan::STATUS_INVOICE,
+                            Pengajuan::STATUS_SELESAI,
+                        ];
+
+                        // Jika status terakhir ada di daftar final, return False (Sembunyikan)
+                        return ! in_array($statusTerakhir, $statusFinal);
+                    })
+                    ->action(function (User $record, array $data) {
+                        // 1. Cek Pengajuan Terakhir
+                        $latest = $record->latestPengajuan;
+
+                        // Cek apakah sedang berjalan (Menunggu / Diproses)
+                        $isOngoing = $latest && in_array($latest->status_verifikasi, [
+                            Pengajuan::STATUS_MENUNGGU,
+                            Pengajuan::STATUS_DIPROSES
+                        ]);
+
+                        if ($isOngoing) {
+                            // A. UPDATE: Jika sedang antri/proses, ganti verifikatornya
+                            $latest->update([
+                                'verificator_id' => $data['verificator_id'],
+                                'status_verifikasi' => Pengajuan::STATUS_DIPROSES, // Paksa jadi Diproses
+                            ]);
+
+                            $message = 'Pengajuan aktif berhasil dialihkan ke admin terpilih.';
+                        } else {
+                            // B. CREATE: Jika belum ada atau sudah selesai, buat baru
+                            Pengajuan::create([
+                                'user_id' => $record->id,
+                                // Pendamping tetap pendamping asli user tersebut
+                                'pendamping_id' => $record->pendamping_id ?? auth()->id(),
+                                'verificator_id' => $data['verificator_id'], // Langsung set admin
+                                'status_verifikasi' => Pengajuan::STATUS_DIPROSES, // Langsung status Diproses
+                                'created_at' => now(),
+                            ]);
+
+                            $message = 'Pengajuan baru berhasil dibuat dan ditugaskan.';
+                        }
+
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('Berhasil Ditugaskan')
+                            ->body($message)
+                            ->send();
+                    }),
 
                 // --- ACTION AJUKAN VERIFIKASI ---
                 Tables\Actions\Action::make('ajukan_verifikasi')
@@ -464,7 +549,7 @@ class AnggotaResource extends Resource
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
-                        ->hidden(fn () => auth()->user()->isKoordinator()),
+                        ->hidden(fn() => auth()->user()->isKoordinator()),
 
                     // TAMBAHKAN INI: Tombol Export Excel
                     ExportBulkAction::make()
@@ -481,7 +566,7 @@ class AnggotaResource extends Resource
                         ->label('Download Template')
                         ->icon('heroicon-o-arrow-down-tray')
                         ->color('info')
-                        ->action(fn () => Excel::download(new TemplateAnggotaExport, 'Template_Import_Pelaku_Usaha.xlsx')),
+                        ->action(fn() => Excel::download(new TemplateAnggotaExport, 'Template_Import_Pelaku_Usaha.xlsx')),
 
                     // 2. ACTION IMPORT EXCEL
                     \Filament\Tables\Actions\Action::make('import_excel')
@@ -529,7 +614,7 @@ class AnggotaResource extends Resource
                             if (! file_exists($filePath)) {
                                 \Filament\Notifications\Notification::make()
                                     ->title('File Tidak Ditemukan')
-                                    ->body('Sistem tidak dapat menemukan file di: '.$filePath)
+                                    ->body('Sistem tidak dapat menemukan file di: ' . $filePath)
                                     ->danger()
                                     ->send();
 
@@ -557,11 +642,10 @@ class AnggotaResource extends Resource
                                 // Hapus file temp
                                 // 4. Hapus file setelah sukses (Gunakan Storage Facade juga)
                                 Storage::disk('local')->delete($data['attachment']);
-
                             } catch (\Exception $e) {
                                 Notification::make()
                                     ->title('Gagal Import')
-                                    ->body('Terjadi kesalahan: '.$e->getMessage())
+                                    ->body('Terjadi kesalahan: ' . $e->getMessage())
                                     ->danger()
                                     ->persistent()
                                     ->send();
@@ -572,26 +656,26 @@ class AnggotaResource extends Resource
                     ->label('Menu Import')
                     ->icon('heroicon-m-ellipsis-vertical')
                     ->color('primary')
-                    ->visible(fn () => auth()->user()->isSuperAdmin()) // Sesuaikan dengan helper role Anda
+                    ->visible(fn() => auth()->user()->isSuperAdmin()) // Sesuaikan dengan helper role Anda
                     ->button(),
 
                 // TOMBOL EXPORT Excel
                 ExportAction::make()
                     ->label('Export Data PU')
                     ->color('success')
-                    ->visible(fn () => auth()->user()->isSuperAdmin() || auth()->user()->isAdmin())
+                    ->visible(fn() => auth()->user()->isSuperAdmin() || auth()->user()->isAdmin())
                     ->exports([
                         ExcelExport::make()
                             // --- TAMBAHKAN INI (Filter Wajib) ---
                             ->modifyQueryUsing(function ($query) {
                                 return $query->where('role', 'member');
                             })
-                            ->withFilename('Data_Pelaku_Usaha_'.date('Y-m-d'))
+                            ->withFilename('Data_Pelaku_Usaha_' . date('Y-m-d'))
                             ->withColumns([
                                 Column::make('name')->heading('Nama Pelaku Usaha'), // Sesuaikan nama field DB
-                                Column::make('nik')->heading('NIK')->formatStateUsing(fn ($state) => ' '.$state),
+                                Column::make('nik')->heading('NIK')->formatStateUsing(fn($state) => ' ' . $state),
                                 // Trik: Tambah spasi di depan agar Excel tidak mengubahnya jadi 3.23E+15
-                                Column::make('tanggal_lahir')->heading('Tanggal Lahir')->formatStateUsing(fn ($state) => $state ? Carbon::parse($state)->format('d-m-Y') : '-'),
+                                Column::make('tanggal_lahir')->heading('Tanggal Lahir')->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('d-m-Y') : '-'),
                                 Column::make('phone')->heading('No. HP/WhatsApp'),
 
                                 // Wilayah
@@ -706,7 +790,7 @@ class AnggotaResource extends Resource
                             TextEntry::make('tanggal_lahir')->label('Tanggal Lahir')->date('d F Y'),
                             TextEntry::make('phone')
                                 ->label('No. WhatsApp')
-                                ->url(fn ($state) => 'https://wa.me/'.preg_replace('/^0/', '62', $state), true)
+                                ->url(fn($state) => 'https://wa.me/' . preg_replace('/^0/', '62', $state), true)
                                 ->color('success')
                                 ->icon('heroicon-m-phone'),
                         ])->columnSpan(1),
@@ -729,7 +813,7 @@ class AnggotaResource extends Resource
                             TextEntry::make('merk_dagang')->label('Merk Dagang')->badge()->color('info'),
                             TextEntry::make('nomor_nib')->label('Nomor NIB')->copyable(),
                             TextEntry::make('mitra_halal')->label('Mitra Halal')->badge()
-                                ->color(fn (string $state): string => match ($state) {
+                                ->color(fn(string $state): string => match ($state) {
                                     'YA' => 'success',
                                     default => 'gray'
                                 }),
@@ -752,72 +836,72 @@ class AnggotaResource extends Resource
                             ->label('KTP')
                             ->disk(null) // Non-aktifkan disk agar tidak mencari file lokal
                             // STATE: Isi state langsung dengan URL Proxy
-                            ->state(fn ($record) => $record->file_ktp ? route('drive.image', ['path' => $record->file_ktp]) : null)
+                            ->state(fn($record) => $record->file_ktp ? route('drive.image', ['path' => $record->file_ktp]) : null)
                             // ACTION: Klik gambar buka tab baru
-                            ->url(fn ($state) => $state)
+                            ->url(fn($state) => $state)
                             ->openUrlInNewTab()
                             ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
                             // BUTTON POJOK: Download/Open
                             ->hintAction(
                                 Action::make('open_ktp')
                                     ->icon('heroicon-o-arrow-top-right-on-square')
-                                    ->url(fn ($record) => $record->file_ktp ? route('drive.image', ['path' => $record->file_ktp]) : null, true)
+                                    ->url(fn($record) => $record->file_ktp ? route('drive.image', ['path' => $record->file_ktp]) : null, true)
                             ),
 
                         // 2. FOTO BERSAMA
                         ImageEntry::make('file_foto_bersama')
-                            ->label('Foto Bersama')
+                            ->label('Foto Bersama Pendamping')
                             ->disk(null)
-                            ->state(fn ($record) => $record->file_foto_bersama ? route('drive.image', ['path' => $record->file_foto_bersama]) : null)
-                            ->url(fn ($state) => $state)
+                            ->state(fn($record) => $record->file_foto_bersama ? route('drive.image', ['path' => $record->file_foto_bersama]) : null)
+                            ->url(fn($state) => $state)
                             ->openUrlInNewTab()
                             ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
                             ->hintAction(
                                 Action::make('open_bersama')
                                     ->icon('heroicon-o-arrow-top-right-on-square')
-                                    ->url(fn ($record) => $record->file_foto_bersama ? route('drive.image', ['path' => $record->file_foto_bersama]) : null, true)
+                                    ->url(fn($record) => $record->file_foto_bersama ? route('drive.image', ['path' => $record->file_foto_bersama]) : null, true)
                             ),
 
                         // 3. TEMPAT USAHA
                         ImageEntry::make('file_foto_usaha')
                             ->label('Tempat Usaha')
                             ->disk(null)
-                            ->state(fn ($record) => $record->file_foto_usaha ? route('drive.image', ['path' => $record->file_foto_usaha]) : null)
-                            ->url(fn ($state) => $state)
+                            ->state(fn($record) => $record->file_foto_usaha ? route('drive.image', ['path' => $record->file_foto_usaha]) : null)
+                            ->url(fn($state) => $state)
                             ->openUrlInNewTab()
                             ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
                             ->hintAction(
                                 Action::make('open_usaha')
                                     ->icon('heroicon-o-arrow-top-right-on-square')
-                                    ->url(fn ($record) => $record->file_foto_usaha ? route('drive.image', ['path' => $record->file_foto_usaha]) : null, true)
+                                    ->url(fn($record) => $record->file_foto_usaha ? route('drive.image', ['path' => $record->file_foto_usaha]) : null, true)
                             ),
 
                         // 4. FOTO PRODUK
                         ImageEntry::make('file_foto_produk')
                             ->label('Foto Produk')
                             ->disk(null)
-                            ->state(fn ($record) => $record->file_foto_produk ? route('drive.image', ['path' => $record->file_foto_produk]) : null)
-                            ->url(fn ($state) => $state)
+                            ->state(fn($record) => $record->file_foto_produk ? route('drive.image', ['path' => $record->file_foto_produk]) : null)
+                            ->url(fn($state) => $state)
                             ->openUrlInNewTab()
                             ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
                             ->hintAction(
                                 Action::make('open_produk')
                                     ->icon('heroicon-o-arrow-top-right-on-square')
-                                    ->url(fn ($record) => $record->file_foto_produk ? route('drive.image', ['path' => $record->file_foto_produk]) : null, true)
+                                    ->url(fn($record) => $record->file_foto_produk ? route('drive.image', ['path' => $record->file_foto_produk]) : null, true)
                             ),
 
                         // 5. NIB
                         ImageEntry::make('file_foto_nib')
                             ->label('Dokumen NIB')
                             ->disk(null)
-                            ->state(fn ($record) => $record->file_foto_nib ? route('drive.image', ['path' => $record->file_foto_nib]) : null)
-                            ->url(fn ($state) => $state)
+                            ->state(fn($record) => $record->file_foto_nib ? route('drive.image', ['path' => $record->file_foto_nib]) : null)
+                            ->url(fn($state) => $state)
                             ->openUrlInNewTab()
                             ->extraImgAttributes(['class' => 'max-w-full h-auto max-h-72 object-contain rounded-lg shadow-md border border-gray-200 bg-gray-50'])
                             ->hintAction(
                                 Action::make('open_nib')
                                     ->icon('heroicon-o-arrow-top-right-on-square')
-                                    ->url(fn ($record) => $record->file_foto_nib ? route('drive.image', ['path' => $record->file_foto_nib]) : null, true)
+                                    ->url(fn($record) => $record->file_foto_nib ? route('drive.image', ['path' => $record->file_foto_nib]) : null, true)
                             ),
 
                     ])
@@ -834,9 +918,9 @@ class AnggotaResource extends Resource
     public static function getUploadGroup($field, $label, $prefix, $form, $isSmall = false, $isRequired = true, $allowPdf = false)
     {
         return Forms\Components\Group::make([
-            Forms\Components\Placeholder::make('preview_'.$prefix)
-                ->hidden(fn ($record) => empty($record?->$field))
-                ->content(fn ($record) => new \Illuminate\Support\HtmlString(
+            Forms\Components\Placeholder::make('preview_' . $prefix)
+                ->hidden(fn($record) => empty($record?->$field))
+                ->content(fn($record) => new \Illuminate\Support\HtmlString(
                     // Logic: Cek ekstensi file, jika PDF tampilkan icon, jika gambar tampilkan preview
                     (Str::endsWith($record->$field ?? '', '.pdf'))
                         ? "
@@ -846,16 +930,16 @@ class AnggotaResource extends Resource
                          </div>
                         <div class='text-xs text-gray-500'>
                             <p class='font-bold text-gray-700'>Dokumen PDF</p>
-                            <a href='".route('drive.image', ['path' => $record->$field ?? ''])."' target='_blank' class='text-primary-600 underline font-bold'>Download / Lihat PDF</a>
+                            <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' target='_blank' class='text-primary-600 underline font-bold'>Download / Lihat PDF</a>
                         </div>
                     </div>
                     "
                         : "
                     <div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
-                        <img src='".route('drive.image', ['path' => $record->$field ?? ''])."' style='height: 80px; border-radius: 4px; object-fit: cover;' loading='lazy'>
+                        <img src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' style='height: 80px; border-radius: 4px; object-fit: cover;' loading='lazy'>
                         <div class='text-xs text-gray-500'>
                             <p class='font-bold text-success-600'>✓ Terupload</p>
-                            <a href='".route('drive.image', ['path' => $record->$field ?? ''])."' target='_blank' class='text-primary-600 underline'>Lihat Penuh</a>
+                            <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' target='_blank' class='text-primary-600 underline'>Lihat Penuh</a>
                         </div>
                     </div>
                     "
@@ -863,32 +947,32 @@ class AnggotaResource extends Resource
 
             // --- COMPONENT UPLOAD ---
             Forms\Components\FileUpload::make($field)
-                ->label(fn ($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
+                ->label(fn($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
                 ->disk('google')
                 ->visibility('private')
                 ->fetchFileInformation(false)
                 ->maxSize(8192) // 8MB
                 ->uploadingMessage('Mengupload...')
-                ->formatStateUsing(fn () => null)
-                ->dehydrated(fn ($state) => filled($state))
+                ->formatStateUsing(fn() => null)
+                ->dehydrated(fn($state) => filled($state))
 
                 // 1. LOGIC DIREKTORI (Sesuai Permintaan)
                 // Folder: dokumen_anggota_{nama_pendamping}/{nama_pelaku_usaha}
-                ->directory(fn (Get $get) => 'dokumen_anggota_'.Str::slug(Auth::user()->name).'/'.Str::slug($get('name') ?? 'temp'))
+                ->directory(fn(Get $get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
 
                 // 2. LOGIC NAMA FILE
                 // File: prefix_nama-pelaku-usaha_timestamp.ext
-                ->getUploadedFileNameForStorageUsing(fn ($file, Get $get) => $prefix.'_'.Str::slug($get('name') ?? 'tanpa-nama').'_'.time().'.'.$file->getClientOriginalExtension())
+                ->getUploadedFileNameForStorageUsing(fn($file, Get $get) => $prefix . '_' . Str::slug($get('name') ?? 'tanpa-nama') . '_' . time() . '.' . $file->getClientOriginalExtension())
 
                 // 3. LOGIC ALLOW PDF VS IMAGE ONLY
                 ->when(
                     $allowPdf,
                     // Jika PDF diperbolehkan
-                    fn ($component) => $component
+                    fn($component) => $component
                         ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'])
                         ->helperText('Boleh PDF atau Foto (JPG/PNG).'),
                     // Jika Hanya Gambar (Default)
-                    fn ($component) => $component
+                    fn($component) => $component
                         ->image()
                         ->imageResizeTargetWidth($isSmall ? '800' : '1024')
                         ->helperText('Format JPG/PNG.')
@@ -896,7 +980,7 @@ class AnggotaResource extends Resource
 
                 // 4. LOGIC WAJIB (Hanya saat create)
                 ->required(
-                    fn ($livewire) => $isRequired && ($livewire instanceof \Filament\Resources\Pages\CreateRecord)
+                    fn($livewire) => $isRequired && ($livewire instanceof \Filament\Resources\Pages\CreateRecord)
                 ),
         ])->columnSpan(1);
     }

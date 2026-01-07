@@ -77,14 +77,13 @@ class StatsOverview extends BaseWidget
                 ->whereNull('verificator_id');
 
             // Cek apakah Admin punya wilayah tugas
+            // Jika YA -> Filter kecamatan.
+            // Jika TIDAK -> Jangan lakukan apa-apa (Tampilkan Semua / Global).
             if ($user->hasAssignedDistricts()) {
                 // Filter User (Pelaku Usaha) yang kecamatannya ada di daftar tugas admin
                 $antrianQuery->whereHas('user', function (Builder $q) use ($user) {
                     $q->whereIn('kecamatan', $user->assigned_districts);
                 });
-            } else {
-                // Jika tidak punya wilayah, set hasil query jadi 0 (keamanan)
-                $antrianQuery->whereRaw('1 = 0');
             }
 
             // --- B. DATA YANG SUDAH DIKLAIM (TUGAS SAYA) ---

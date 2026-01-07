@@ -54,12 +54,11 @@ class PengajuanChart extends ChartWidget
         if ($user->isSuperAdmin()) {
             // No filter
         } elseif ($user->isAdmin()) {
+            // filter jika admin ditugaskan wilayah
             if ($user->hasAssignedDistricts()) {
                 $query->whereHas('user', function (Builder $q) use ($user) {
                     $q->whereIn('kecamatan', $user->assigned_districts);
                 });
-            } else {
-                $query->whereRaw('1 = 0');
             }
         } elseif ($user->isKoordinator()) {
             $kodeKecamatan = $user->kecamatan;
