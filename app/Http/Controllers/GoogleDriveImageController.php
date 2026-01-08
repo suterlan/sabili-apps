@@ -26,8 +26,15 @@ class GoogleDriveImageController extends Controller
         // 3. Ambil konten file dan metadatanya
         // Kita gunakan ->get() bukan ->response() karena kita butuh memanipulasi datanya (convert)
         $fileContent = $disk->get($path);
-        $mimeType = $disk->mimeType($path);
+        // Deteksi ekstensi manual untuk memastikan PDF dikenali
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        if ($extension === 'pdf') {
+            $mimeType = 'application/pdf';
+        } else {
+            // Fallback ke deteksi otomatis drive
+            $mimeType = $disk->mimeType($path);
+        }
 
         // 4. LOGIKA KONVERSI HEIC KE JPG
         // Browser tidak bisa baca HEIC, jadi kita ubah on-the-fly
@@ -71,6 +78,15 @@ class GoogleDriveImageController extends Controller
 
         // 6. Set Header Content-Type yang (mungkin) sudah diubah jadi image/jpeg
         $response->header('Content-Type', $mimeType);
+
+        // --- TAMBAHAN KHUSUS PDF ---
+        // Jika PDF, paksa browser untuk menampilkannya (inline), bukan download
+        if ($mimeType === 'application/pdf') {
+            $response->header('Content-Disposition', 'inline; filename="' . basename($path) . '"');
+            // Hapus header X-Frame-Options agar bisa di-embed di iframe
+            $response->header('X-Frame-Options', 'SAMEORIGIN');
+        }
+        // ---------------------------
 
         // 7. Optimasi Cache (PENTING AGAR TIDAK LOAD ULANG TERUS)
         // Cache selama 1 tahun (31536000 detik) karena file Google Drive jarang berubah namanya

@@ -22,7 +22,7 @@ class LatestPengajuan extends BaseWidget
     {
         $user = auth()->user();
 
-        return $user->isSuperAdmin() || $user->isAdmin();
+        return $user->isSuperAdmin() || $user->isAdmin() || $user->isManajemen();
     }
 
     // 2. QUERY UTAMA DENGAN FILTER WILAYAH
@@ -38,7 +38,7 @@ class LatestPengajuan extends BaseWidget
         // LOGIC FILTER WILAYAH
         // Jika user adalah SUPERADMIN, dia melihat semua (bypass filter ini)
         // Jika user adalah ADMIN BIASA, terapkan filter kecamatan
-        if (! $user->isSuperAdmin()) {
+        if (! $user->isSuperAdmin() || $user->isManajemen()) {
 
             if ($user->hasAssignedDistricts()) {
                 // Filter Pengajuan dimana User (Pelaku Usaha)-nya

@@ -23,7 +23,7 @@ class StatsOverview extends BaseWidget
         // =====================================================================
         // 1. LOGIKA SUPER ADMIN (Global Overview)
         // =====================================================================
-        if ($user->isSuperAdmin()) {
+        if ($user->isSuperAdmin() || $user->isManajemen()) {
             return [
                 // A. Antrian (Belum dipegang siapapun)
                 Stat::make('Antrian Global', Pengajuan::whereNull('verificator_id')
@@ -177,7 +177,7 @@ class StatsOverview extends BaseWidget
                 Stat::make('Perlu Perbaikan', (clone $myPengajuans)
                     ->whereIn('status_verifikasi', Pengajuan::getStatRevisi())
                     ->count())
-                    ->description('Cek Tab Revisi')
+                    ->description('Revisi data PU')
                     ->color('danger')
                     ->icon('heroicon-m-exclamation-circle')
                     // Arahkan ke AnggotaResource, filter status revisi

@@ -21,10 +21,12 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Columns\TextColumn\TextColumnSize;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 
 class PengajuanResource extends Resource
@@ -96,6 +98,55 @@ class PengajuanResource extends Resource
                     })
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('catatan_revisi')
+                    ->label('Catatan Revisi')
+                    ->wrap()
+                    ->size(TextColumnSize::ExtraSmall) // Ukuran kecil agar muat banyak
+                    ->weight(\Filament\Support\Enums\FontWeight::Bold) // Tebal agar mencolok
+                    ->fontFamily(\Filament\Support\Enums\FontFamily::Mono) // Opsional: Font mono biar beda dari nama
+                    // 1. LOGIC WARNA (Cek record dulu agar aman)
+                    ->color(function ($state, $record) {
+                        if (! $record) return 'gray'; // Safety check
+                        return str_contains($state, 'SUDAH REVISI') ? 'success' : 'danger';
+                    })
+                    // 2. LOGIC TEXT (Format tampilan)
+                    ->formatStateUsing(function ($state) {
+                        if (str_contains($state, 'SUDAH REVISI')) {
+                            // Hapus prefix biar rapi
+                            return '✅ ' . str_replace('SUDAH REVISI: ', '', $state);
+                        }
+                        return '⚠️' . $state;
+                    })
+                    // 3. TOOLTIP (Penjelasan saat di-hover)
+                    ->tooltip(function ($state) {
+                        return str_contains($state, 'SUDAH REVISI')
+                            ? 'User telah memperbaiki data ini'
+                            : 'Menunggu perbaikan user';
+                    })
+                    // 4. MENGHILANGKAN ISI JIKA BUKAN STATUS REVISI/DIPROSES
+                    // Alih-alih visible(), kita paksa return null jika statusnya tidak relevan
+                    ->getStateUsing(function ($record) {
+                        if (! $record) return null;
+
+                        // Tentukan status mana yang BOLEH muncul catatan ini
+                        $statusRelevan = [
+                            Pengajuan::STATUS_NIK_INVALID,
+                            Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
+                            Pengajuan::STATUS_UPLOAD_NIB,
+                            Pengajuan::STATUS_PENGAJUAN_DITOLAK
+                        ];
+
+                        // Jika statusnya tidak relevan (misal Selesai/Menunggu), kosongkan isinya
+                        if (in_array($record->status_verifikasi, $statusRelevan)) {
+                            return $record->catatan_revisi;
+                        }
+
+                        return null;
+                    })
+                    // 5. SEMBUNYIKAN KOLOM JIKA ISINYA KOSONG (Placeholder)
+                    // Ini opsi agar kalau null dia jadi strip (-) atau benar-benar kosong
+                    ->placeholder('-'),
+
                 // Kolom Verifikator (Siapa yang sedang mengerjakan)
                 Tables\Columns\TextColumn::make('verificator.name')
                     ->label('Verifikator')
@@ -112,7 +163,7 @@ class PengajuanResource extends Resource
                     ->visible(function (Pengajuan $record, $livewire) {
                         // --- ATURAN BARU ---
                         // 1. Jika Super Admin, tombol HILANG (Return False)
-                        if (auth()->user()->isSuperAdmin()) {
+                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) {
                             return false;
                         }
 
@@ -147,8 +198,10 @@ class PengajuanResource extends Resource
                     ->color('info')
 
                     ->visible(function (Pengajuan $record) {
-                        // Syarat 1: User login adalah verifikatornya
-                        $isMyTask = auth()->id() === $record->verificator_id || auth()->user()->isSuperAdmin();
+
+                        $isMyTask = auth()->id() === $record->verificator_id
+                            || auth()->user()->isSuperAdmin()
+                            || auth()->user()->isManajemen();
 
                         return $isMyTask;
                     }),
@@ -175,6 +228,8 @@ class PengajuanResource extends Resource
                             return false;
                         }
 
+                        if ($user->isManajemen()) return false;
+
                         // 2. Jangan batalkan jika sudah SELESAI/SERTIFIKAT (Bahaya!)
                         if (in_array($record->status_verifikasi, [
                             Pengajuan::STATUS_SELESAI,
@@ -188,7 +243,7 @@ class PengajuanResource extends Resource
                         $activeTab = $livewire->activeTab ?? null;
 
                         // --- SKENARIO SUPER ADMIN ---
-                        // Super Admin hanya bisa membatalkan lewat tab 'semua' (karena gak punya tab tugas_saya)
+                        // Super Admin hanya bisa membatalkan lewat tab 'semua'
                         if ($user->isSuperAdmin()) {
                             return $activeTab === 'semua';
                         }
@@ -310,31 +365,62 @@ class PengajuanResource extends Resource
                                     ->numeric()
                                     ->required(),
 
-                                // --- PREVIEW FILE (Persis seperti Create) ---
-                                Forms\Components\Placeholder::make('preview_nib')
-                                    ->label('Preview File Saat Ini')
-                                    ->hidden(fn(Pengajuan $record) => empty($record->user->file_foto_nib))
-                                    ->content(fn(Pengajuan $record) => new \Illuminate\Support\HtmlString(
-                                        (Str::endsWith($record->user->file_foto_nib ?? '', '.pdf'))
-                                            ?
-                                            "<div class='mb-2 p-3 border rounded bg-gray-50 flex items-center gap-4'>
-                                                <div class='bg-red-100 text-red-600 p-2 rounded'>
-                                                    <svg class='w-8 h-8' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 2H7a2 2 0 00-2 2v14a2 2 0 002 2z'></path></svg>
+                                // --- PREVIEW FILE  ---
+                                Placeholder::make('preview_nib_visual')
+                                    ->label('Preview Dokumen')
+                                    ->columnSpanFull() // Agar lebar penuh
+                                    // Hanya tampil jika record ada dan file tidak kosong
+                                    ->hidden(fn($record) => empty($record) || empty($record->user->file_foto_nib))
+                                    ->content(function ($record) {
+                                        // Ambil path dan generate URL
+                                        $path = $record->user->file_foto_nib ?? '';
+                                        if (empty($path)) return null;
+
+                                        $url = route('drive.image', ['path' => $path]);
+                                        $isPdf = Str::endsWith(strtolower($path), '.pdf');
+
+                                        // A. JIKA PDF: Tampilkan Iframe + Link Download
+                                        if ($isPdf) {
+                                            return new \Illuminate\Support\HtmlString("
+                                            <div class='w-full border rounded-lg overflow-hidden bg-gray-100'>
+                                                <iframe 
+                                                    src='{$url}' 
+                                                    width='100%' 
+                                                    height='600px' 
+                                                    style='border: none;'
+                                                    loading='lazy'>
+                                                </iframe>
+                                                
+                                                <div class='p-3 border-t bg-gray-50 flex items-center gap-4'>
+                                                    <div class='bg-red-100 text-red-600 p-2 rounded'>
+                                                        <svg class='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 2H7a2 2 0 00-2 2v14a2 2 0 002 2z'></path></svg>
+                                                    </div>
+                                                    <div class='text-sm text-gray-500'>
+                                                        <p class='font-bold text-gray-700'>Dokumen PDF</p>
+                                                        <a href='{$url}' target='_blank' class='text-primary-600 underline font-bold hover:text-primary-500'>
+                                                            Buka PDF di Tab Baru (Download)
+                                                        </a>
+                                                    </div>
                                                 </div>
-                                                <div class='text-xs text-gray-500'>
-                                                    <p class='font-bold text-gray-700'>Dokumen PDF</p>
-                                                    <a href='" . route('drive.image', ['path' => $record->user->file_foto_nib ?? '']) . "' target='_blank' class='text-primary-600 underline font-bold'>Download / Lihat PDF</a>
+                                            </div>
+                                        ");
+                                        }
+
+                                        // B. JIKA GAMBAR: Tampilkan Tag Img
+                                        return new \Illuminate\Support\HtmlString("
+                                            <div class='w-full border rounded-lg bg-gray-50 p-2 text-center'>
+                                                <img 
+                                                    src='{$url}' 
+                                                    style='max-height: 500px; max-width: 100%; margin: 0 auto; border-radius: 8px;' 
+                                                    class='shadow-sm'
+                                                    loading='lazy'
+                                                >
+                                                <div class='mt-2 text-xs text-gray-500'>
+                                                    <a href='{$url}' target='_blank' class='text-primary-600 underline'>Lihat Gambar Penuh</a>
                                                 </div>
-                                            </div>"
-                                            :
-                                            "<div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
-                                                <img src='" . route('drive.image', ['path' => $record->user->file_foto_nib ?? '']) . "' style='height: 80px; border-radius: 4px; object-fit: cover;' loading='lazy'>
-                                                <div class='text-xs text-gray-500'>
-                                                    <p class='font-bold text-success-600'>✓ Terupload</p>
-                                                    <a href='" . route('drive.image', ['path' => $record->user->file_foto_nib ?? '']) . "' target='_blank' class='text-primary-600 underline'>Lihat Penuh</a>
-                                                </div>
-                                            </div>"
-                                    )),
+                                            </div>
+                                        ");
+                                    }),
 
                                 // --- UPLOAD FILE NIB ---
                                 Forms\Components\FileUpload::make('file_foto_nib')
@@ -355,7 +441,7 @@ class PengajuanResource extends Resource
 
                                     // --- LOGIC DIREKTORI (Auth = Pendamping, Record->User = Pelaku Usaha) ---
                                     ->directory(function (Pengajuan $record) {
-                                        return 'dokumen_anggota_' . Str::slug(auth()->user()->name) . '/' . Str::slug($record->user->name ?? 'temp');
+                                        return 'dokumen_anggota_' . Str::slug(auth()->user()->name) . '/' . Str::slug($record->user->pendamping->name ?? 'temp');
                                     })
 
                                     // --- LOGIC PENAMAAN FILE ---
@@ -419,6 +505,9 @@ class PengajuanResource extends Resource
 
                         // 2. Cek apakah user adalah pemilik data (Verifikator Asli)
                         $isVerificatorAsli = $user->id === $record->verificator_id;
+
+                        // Role manajemen tidak boleh lihat button ini
+                        if ($user->isManajemen()) return false;
 
                         // --- ATURAN LOGIKA PER TAB ---
                         // A. Tab Selesai -> TOMBOL HILANG TOTAL
@@ -708,8 +797,9 @@ class PengajuanResource extends Resource
     // --- MANAJEMEN HAK AKSES ---
     public static function canViewAny(): bool
     {
-        // Menu ini bisa dilihat oleh: Superadmin, Admin
+        // Menu ini bisa dilihat oleh:
         return Auth::user()->isSuperAdmin()
+            || Auth::user()->isManajemen()
             || Auth::user()->isAdmin();
     }
 
@@ -868,6 +958,21 @@ class PengajuanResource extends Resource
                 ])
                     ->columns(2)
                     ->columnSpanFull(),
+
+                // =========================================================
+                // BAGIAN TAMBAHAN: DOKUMEN NIB (PDF / GAMBAR)
+                // =========================================================
+                \Filament\Infolists\Components\Section::make('Dokumen NIB')
+                    ->icon('heroicon-o-document-text')
+                    ->schema([
+                        // Panggil file blade
+                        \Filament\Infolists\Components\ViewEntry::make('nib_preview_container')
+                            ->view('filament.components.nib-preview')
+                            ->columnSpanFull()
+                            // Logic agar section ini hanya muncul jika file ada
+                            ->visible(fn($record) => !empty($record->user->file_foto_nib)),
+                    ])
+                    ->collapsible(),
 
                 // =========================================================
                 // BAGIAN 2: DOKUMEN FOTO (CARD STYLE & DOWNLOAD FIX)

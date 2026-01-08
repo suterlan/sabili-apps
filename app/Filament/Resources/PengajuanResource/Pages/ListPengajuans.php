@@ -26,15 +26,15 @@ class ListPengajuans extends ListRecords
 
         // Helper: Cek apakah user adalah Super Admin
         // (Sesuaikan method ini dengan logic role di aplikasi Anda)
-        $isSuperAdmin = $user->isSuperAdmin();
+        $hasGlobalAccess = $user->isSuperAdmin() || $user->isManajemen();
 
         // -------------------------------------------------------
         // LOGIC QUERY WILAYAH
         // -------------------------------------------------------
         // Fungsi helper untuk filter wilayah berdasarkan User Pelaku Usaha
         // Pengajuan -> User (Pelaku Usaha) -> district_code
-        $applyRegionFilter = function (Builder $query) use ($user, $isSuperAdmin) {
-            if (!$isSuperAdmin && $user->hasAssignedDistricts()) {
+        $applyRegionFilter = function (Builder $query) use ($user, $hasGlobalAccess) {
+            if (!$hasGlobalAccess && $user->hasAssignedDistricts()) {
                 $query->whereHas('user', function (Builder $q) use ($user) {
                     $q->whereIn('kecamatan', $user->assigned_districts);
                 });
@@ -47,7 +47,7 @@ class ListPengajuans extends ListRecords
         // HELPER FILTER VERIFIKATOR
         // (Agar kode tidak berulang-ulang di setiap tab)
         // -------------------------------------------------------
-        $filterByVerificator = function (Builder $query) use ($user, $isSuperAdmin) {
+        $filterByVerificator = function (Builder $query) use ($user, $hasGlobalAccess) {
             // 1. SYARAT UTAMA: Data harus SUDAH DI-KLAIM (Punya Verifikator)
             // Ini mencegah data "Antrian" bocor ke tab Proses/Revisi/Lainnya
             $query->whereNotNull('verificator_id');
@@ -55,7 +55,7 @@ class ListPengajuans extends ListRecords
             // 2. FILTER KEPEMILIKAN
             // Jika Super Admin: Bebas lihat punya siapa saja (asal sudah diklaim)
             // Jika Verifikator: Hanya lihat punya sendiri
-            if (! $isSuperAdmin) {
+            if (! $hasGlobalAccess) {
                 $query->where('verificator_id', $user->id);
             }
             return $query;
@@ -72,10 +72,10 @@ class ListPengajuans extends ListRecords
         $tabs['antrian'] = Tab::make('Antrian')
             ->icon('heroicon-m-inbox-stack')
             ->badge($badgeAntrian->count()) // Badge tetap menghitung TOTAL antrian (misal: 50)
-            ->modifyQueryUsing(function (Builder $query) use ($applyRegionFilter, $isSuperAdmin) {
+            ->modifyQueryUsing(function (Builder $query) use ($applyRegionFilter, $hasGlobalAccess) {
                 // 1. Tentukan Limit Berdasarkan Role
                 // Jika Super Admin = 5, Jika Verifikator biasa = 1
-                $limitData = $isSuperAdmin ? 5 : 1;
+                $limitData = $hasGlobalAccess ? 5 : 1;
 
                 // 1. Buat Query Terpisah untuk mencari ID (Clone logic filter)
                 // Kita tidak bisa pakai $query langsung karena akan konflik dengan query utama tabel

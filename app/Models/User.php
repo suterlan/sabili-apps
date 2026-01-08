@@ -129,11 +129,21 @@ class User extends Authenticatable implements FilamentUser
         return $this->role === 'pendamping';
     }
 
+    // Helper cek role Manajemen
+    public function isManajemen()
+    {
+        return $this->role === 'manajemen';
+    }
+
     // IZIN AKSES PANEL
     public function canAccessPanel(Panel $panel): bool
     {
         // Superadmin, Admin, dan Pendamping boleh login
-        return $this->isSuperAdmin() || $this->isAdmin() || $this->isPendamping() || $this->isKoordinator();
+        return $this->isSuperAdmin()
+            || $this->isAdmin()
+            || $this->isPendamping()
+            || $this->isKoordinator()
+            || $this->isManajemen();
     }
 
     // Helper untuk mengecek apakah user sudah diverifikasi
@@ -250,16 +260,16 @@ class User extends Authenticatable implements FilamentUser
         return \Filament\Forms\Components\Group::make([
             // 1. PREVIEW GAMBAR (Custom Preview via Placeholder)
             // Bagian ini sudah benar, menampilkan gambar via Route Proxy
-            \Filament\Forms\Components\Placeholder::make('preview_'.$field)
-                ->hidden(fn ($record) => empty($record?->$field))
-                ->content(fn ($record) => new \Illuminate\Support\HtmlString("
+            \Filament\Forms\Components\Placeholder::make('preview_' . $field)
+                ->hidden(fn($record) => empty($record?->$field))
+                ->content(fn($record) => new \Illuminate\Support\HtmlString("
                     <div class='mb-2 p-2 border rounded bg-gray-50 flex items-center gap-4'>
-                        <img src='".route('drive.image', ['path' => $record->$field ?? ''])."' 
+                        <img src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' 
                              style='height: 80px; width: 80px; object-fit: cover; border-radius: 8px;' 
                              loading='lazy' class='shadow-sm'>
                         <div class='text-xs text-gray-500'>
                             <p class='font-bold text-success-600'>✓ Terupload</p>
-                            <a href='".route('drive.image', ['path' => $record->$field ?? ''])."' 
+                            <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' 
                                target='_blank' 
                                class='text-primary-600 underline hover:text-primary-500'>
                                Lihat Penuh
@@ -270,7 +280,7 @@ class User extends Authenticatable implements FilamentUser
 
             // 2. INPUT FILE (FileUpload)
             \Filament\Forms\Components\FileUpload::make($field)
-                ->label(fn ($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
+                ->label(fn($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
                 ->disk('google')
                 ->visibility('private')
                 ->image()
@@ -282,18 +292,18 @@ class User extends Authenticatable implements FilamentUser
                 ->uploadingMessage('Mengupload...') // 2. Pesan upload
 
                 // 3. TRIK KUNCI: Kosongkan state visual agar Filament tidak mencoba me-load preview di dalam kotak
-                ->formatStateUsing(fn () => null)
+                ->formatStateUsing(fn() => null)
 
                 // 4. Mencegah error database: Hanya simpan jika user benar-benar mengupload file baru
                 // (Karena statenya kita null-kan di atas, kita harus jaga di sini)
-                ->dehydrated(fn ($state) => filled($state))
+                ->dehydrated(fn($state) => filled($state))
                 // ------------------------------------------
 
-                ->directory(fn (\Filament\Forms\Get $get) => 'dokumen_pendamping_'.\Illuminate\Support\Str::slug($get('name') ?? 'temp'))
-                ->getUploadedFileNameForStorageUsing(fn ($file) => $prefix.'_'.time().'.'.$file->getClientOriginalExtension())
+                ->directory(fn(\Filament\Forms\Get $get) => 'dokumen_pendamping_' . \Illuminate\Support\Str::slug($get('name') ?? 'temp'))
+                ->getUploadedFileNameForStorageUsing(fn($file) => $prefix . '_' . time() . '.' . $file->getClientOriginalExtension())
 
                 // Logic Required
-                ->required(fn ($record) => $isRequired && empty($record?->$field)),
+                ->required(fn($record) => $isRequired && empty($record?->$field)),
         ])->columnSpan(1);
     }
 

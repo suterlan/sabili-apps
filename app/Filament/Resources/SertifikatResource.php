@@ -32,7 +32,7 @@ class SertifikatResource extends Resource
             // 2. Filter Hak Akses
             ->where(function (Builder $query) use ($user) {
                 // A. Jika Super Admin -> Bebas lihat semua
-                if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+                if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin() || method_exists($user, 'isManajemen') && $user->isManajemen()) {
                     return $query;
                 }
 
@@ -88,7 +88,7 @@ class SertifikatResource extends Resource
                     ->color(function (Pengajuan $record) {
                         $statusBayar = $record->tagihan?->status_pembayaran;
                         // Jika Superadmin, selalu aktif (Primary)
-                        if (auth()->user()->isSuperAdmin()) return 'primary';
+                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) return 'primary';
 
                         return $statusBayar === Tagihan::STATUS_DIBAYAR ? 'primary' : 'gray';
                     })
@@ -98,7 +98,7 @@ class SertifikatResource extends Resource
                     ->url(function (Pengajuan $record) {
                         $statusBayar = $record->tagihan?->status_pembayaran;
                         // Jika Superadmin, selalu dapat link
-                        if (auth()->user()->isSuperAdmin()) {
+                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) {
                             return Storage::url($record->file_sertifikat);
                         }
 
@@ -113,7 +113,7 @@ class SertifikatResource extends Resource
                         $statusBayar = $record->tagihan?->status_pembayaran;
 
                         // Jika belum lunas dan bukan superadmin
-                        if ($statusBayar !== Tagihan::STATUS_DIBAYAR && !auth()->user()->isSuperAdmin()) {
+                        if ($statusBayar !== Tagihan::STATUS_DIBAYAR && !auth()->user()->isSuperAdmin() && !auth()->user()->isManajemen()) {
                             \Filament\Notifications\Notification::make()
                                 ->warning()
                                 ->title('Akses Dibatasi')
@@ -125,7 +125,7 @@ class SertifikatResource extends Resource
                     // 4. LOGIKA TOOLTIP:
                     // Sekarang pasti muncul karena tombol tidak benar-benar disabled secara HTML
                     ->tooltip(function (Pengajuan $record) {
-                        if (auth()->user()->isSuperAdmin()) return 'Unduh Sertifikat';
+                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) return 'Unduh Sertifikat';
 
                         $statusBayar = $record->tagihan?->status_pembayaran;
 

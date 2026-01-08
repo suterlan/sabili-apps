@@ -42,6 +42,6 @@ class TopPendampingChart extends ChartWidget
     // Hanya Tampil untuk Superadmin & Admin
     public static function canView(): bool
     {
-        return Auth::user()->isSuperAdmin();
+        return Auth::user()->isSuperAdmin() || Auth::user()->isManajemen();
     }
 }

@@ -61,6 +61,43 @@ class AnggotaResource extends Resource
         return $form
             ->schema([
 
+                // --- [BARU] BAGIAN 1: ALERT REVISI (Paling Atas) ---
+                // Ini diletakkan SEBELUM Wizard agar terlihat duluan
+                Forms\Components\Section::make('PERBAIKAN DIBUTUHKAN')
+                    ->icon('heroicon-m-exclamation-triangle')
+                    ->iconColor('danger')
+                    ->schema([
+                        Forms\Components\Placeholder::make('alert_revisi')
+                            ->label('Pesan dari Verifikator:')
+                            ->content(function ($record) {
+                                // Ambil catatan dari pengajuan terakhir
+                                return $record?->latestPengajuan?->catatan_revisi ?? '-';
+                            })
+                            ->extraAttributes(['class' => 'text-danger-600 font-semibold text-lg']),
+
+                        Forms\Components\Placeholder::make('info_workflow')
+                            ->label('Informasi:')
+                            ->content(function () {
+                                return 'Setelah yakin data sudah benar diperbaiki, Silahkan kembali ke tabel dan klik tombol "Ajukan".';
+                            }),
+                    ])
+                    ->visible(function ($record) {
+                        if (!$record) return false;
+
+                        // Ambil status terakhir
+                        $status = $record->latestPengajuan?->status_verifikasi;
+
+                        // Definisikan status mana saja yang dianggap REVISI
+                        $statusRevisi = [
+                            Pengajuan::STATUS_NIK_INVALID,
+                            Pengajuan::STATUS_UPLOAD_NIB,
+                            Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
+                            Pengajuan::STATUS_PENGAJUAN_DITOLAK,
+                        ];
+
+                        return in_array($status, $statusRevisi);
+                    }),
+
                 // WRAPPER UTAMA: WIZARD
                 Wizard::make([
 
@@ -278,7 +315,21 @@ class AnggotaResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->label('Nama Pelaku Usaha')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    // [OPSIONAL] Tambahkan deskripsi status di bawah nama
+                    ->description(function (User $record) {
+                        $status = $record->latestPengajuan?->status_verifikasi;
+                        // Jika statusnya revisi, tampilkan catatannya kecil di bawah nama
+                        if (in_array($status, [
+                            Pengajuan::STATUS_NIK_INVALID,
+                            Pengajuan::STATUS_UPLOAD_NIB,
+                            Pengajuan::STATUS_UPLOAD_ULANG_FOTO,
+                            Pengajuan::STATUS_PENGAJUAN_DITOLAK
+                        ])) {
+                            return 'Revisi: ' . Str::limit($record->latestPengajuan->catatan_revisi, 30);
+                        }
+                        return null;
+                    }, position: 'below'),
 
                 Tables\Columns\TextColumn::make('merk_dagang')
                     ->label('Usaha/Merk')
@@ -328,7 +379,23 @@ class AnggotaResource extends Resource
 
                         default => 'primary',
                     })
+                    // [BARU] Tooltip agar jika kursor diarahkan ke badge, muncul catatannya
+                    ->tooltip(fn(User $record) => $record->latestPengajuan?->catatan_revisi)
                     ->searchable(),
+
+                // --- [BARU] KOLOM KHUSUS CATATAN (Opsional, jika ingin kolom terpisah) ---
+                Tables\Columns\TextColumn::make('latestPengajuan.catatan_revisi')
+                    ->label('Info Revisi')
+                    ->placeholder('-')
+                    ->limit(20) // Batasi panjang teks
+                    ->wrap() // Bungkus text jika panjang
+                    ->color('danger')
+                    ->weight('bold')
+                    ->visible(function () {
+                        // Hanya munculkan kolom ini jika user adalah Pendamping
+                        // Agar tabel Admin tidak kepenuhan
+                        return auth()->user()->isPendamping();
+                    }),
 
                 // KOLOM BARU: PENDAMPING
                 // Menampilkan nama pendamping dari relasi
@@ -389,7 +456,7 @@ class AnggotaResource extends Resource
                 // Superadmin/Admin boleh delete atau tidak?
                 // Jika tidak boleh delete, tambahkan ->visible(...) di sini juga.
                 Tables\Actions\DeleteAction::make()->label('')
-                    ->hidden(fn() => auth()->user()->isKoordinator()),
+                    ->hidden(fn() => auth()->user()->isKoordinator() || auth()->user()->isManajemen()),
 
                 // --- ACTION BARU: SUPERADMIN ASSIGN ADMIN ---
                 Tables\Actions\Action::make('assign_verificator')
@@ -490,12 +557,13 @@ class AnggotaResource extends Resource
                     // Tombol ini HANYA muncul jika:
                     // 1. Belum pernah diajukan sama sekali (latestPengajuan == null)
                     // 2. ATAU Pengajuan terakhir sudah selesai/ditolak (Boleh ajukan ulang)
-                    // 3. HANYA untuk Pendamping yang bersangkutan dan superadmin/admin TIDAK BISA pakai tombol ini
+                    // 3. HANYA untuk Pendamping yang bersangkutan dan admin TIDAK BISA pakai tombol ini
                     ->visible(function (User $record) {
                         $currentUser = Auth::user();
 
-                        // Sarat 3: Jika user BUKAN salah satu dari keduanya, sembunyikan tombol
-                        if (! ($currentUser->isPendamping() || $currentUser->isSuperAdmin())) {
+                        // Sarat 3: Jika user BUKAN pendamping, sembunyikan tombol
+                        if (! ($currentUser->isPendamping()
+                            || $currentUser->isSuperAdmin())) {
                             return false;
                         }
 
@@ -510,7 +578,7 @@ class AnggotaResource extends Resource
                         // Syarat 2: Boleh ajukan ulang HANYA JIKA statusnya 'Selesai' atau 'Invalid' (Ditolak)
                         // Status lain seperti 'Menunggu', 'Diproses', 'Upload NIB' tidak boleh diajukan ulang (harus diselesaikan dulu)
                         return in_array($status, [
-                            Pengajuan::STATUS_SELESAI,          // Boleh ajukan lagi kalau sudah selesai (misal perpanjangan)
+                            // Pengajuan::STATUS_SELESAI,          // Boleh ajukan lagi kalau sudah selesai (misal perpanjangan)
                             Pengajuan::STATUS_NIK_INVALID,      // Gagal, perlu revisi
                             Pengajuan::STATUS_UPLOAD_ULANG_FOTO,    // Gagal
                             Pengajuan::STATUS_UPLOAD_NIB,       // Revisi dokumen
@@ -522,39 +590,68 @@ class AnggotaResource extends Resource
 
                     // LOGIC ACTION:
                     ->action(function (User $record) {
-                        // Kita buat PENGAJUAN BARU (Record baru)
-                        // Agar tercatat di history dan masuk ke antrian paling belakang (atau sesuaikan kebijakan)
+                        // Cek apakah sudah ada pengajuan sebelumnya?
+                        $existingPengajuan = $record->latestPengajuan;
 
-                        // Tentukan siapa pendampingnya
-                        // Jika user login adalah Super Admin, gunakan pendamping asli user tersebut
-                        // Jika bukan (berarti pendamping itu sendiri), gunakan ID yang login
-                        $pendampingId = auth()->user()->isSuperAdmin()
-                            ? $record->pendamping_id
-                            : auth()->id();
+                        if ($existingPengajuan) {
+                            // ==========================================
+                            // SKENARIO 1: UPDATE (REVISI DATA)
+                            // ==========================================
 
-                        Pengajuan::create([
-                            'user_id' => $record->id,
-                            'pendamping_id' => $pendampingId,
-                            'status_verifikasi' => Pengajuan::STATUS_MENUNGGU,
-                            'created_at' => now(),
-                        ]);
+                            // Cek apakah sebelumnya sudah ada admin yg memegang?
+                            // Jika ada, kembalikan ke dia (Fast Track). Jika tidak, biarkan null (masuk ke antrian).
+                            $verificatorId = $existingPengajuan->verificator_id;
+
+                            // Kita ambil catatan lama bersih (tanpa prefix sebelumnya jika ada)
+                            $catatanLama = str_replace('SUDAH REVISI: ', '', $existingPengajuan->catatan_revisi);
+
+                            $existingPengajuan->update([
+                                'catatan_revisi'    => 'SUDAH REVISI: ' . $catatanLama,
+                                'updated_at'        => now(), // Update timestamp agar admin tahu ada aktivitas baru
+                            ]);
+
+                            $notifTitle = 'Data Diperbarui';
+                            $notifBody  = $verificatorId
+                                ? 'Data perbaikan telah dikirim kembali ke Admin Verifikator.'
+                                : 'Data telah masuk antrian verifikasi.';
+                        } else {
+                            // ==========================================
+                            // SKENARIO 2: CREATE (BARU PERTAMA KALI)
+                            // ==========================================
+
+                            // Tentukan pendamping
+                            $pendampingId = auth()->user()->isSuperAdmin()
+                                ? $record->pendamping_id
+                                : auth()->id();
+
+                            Pengajuan::create([
+                                'user_id' => $record->id,
+                                'pendamping_id' => $pendampingId,
+                                'status_verifikasi' => Pengajuan::STATUS_MENUNGGU,
+                                'created_at' => now(),
+                            ]);
+
+                            $notifTitle = 'Berhasil Diajukan';
+                            $notifBody  = 'Data baru telah masuk ke antrian verifikasi Admin.';
+                        }
 
                         \Filament\Notifications\Notification::make()
                             ->success()
-                            ->title('Berhasil Diajukan')
-                            ->body('Data telah masuk kembali ke antrian verifikasi Admin.')
+                            ->title($notifTitle)
+                            ->body($notifBody)
                             ->send();
                     }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
-                        ->hidden(fn() => auth()->user()->isKoordinator()),
+                        ->hidden(fn() => auth()->user()->isKoordinator() || auth()->user()->isManajemen()),
 
                     // TAMBAHKAN INI: Tombol Export Excel
                     ExportBulkAction::make()
                         ->label('Export Excel')
-                        ->icon('heroicon-o-arrow-down-tray'),
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->hidden(fn() => auth()->user()->isManajemen()),
                 ]),
             ])
             ->headerActions([
@@ -710,7 +807,9 @@ class AnggotaResource extends Resource
         $query->where('role', 'member');
 
         // 2. Jika Superadmin / Admin -> Lihat Semua
-        if ($user && ($user->isSuperAdmin() || $user->isAdmin())) {
+        if ($user && ($user->isSuperAdmin()
+            || $user->isManajemen()
+            || $user->isAdmin())) {
             return $query;
         }
 
@@ -743,6 +842,7 @@ class AnggotaResource extends Resource
 
         return $user && (
             $user->isSuperAdmin() ||
+            $user->isManajemen() ||
             $user->isAdmin() ||
             $user->isPendamping() ||
             $user->isKoordinator()

@@ -32,7 +32,7 @@ class PengajuanChart extends ChartWidget
     public static function canView(): bool
     {
         $user = auth()->user();
-        return $user->isSuperAdmin() || $user->isAdmin() || $user->isKoordinator();
+        return $user->isSuperAdmin() || $user->isAdmin() || $user->isKoordinator() || $user->isManajemen();
     }
 
     protected function getData(): array
@@ -51,7 +51,7 @@ class PengajuanChart extends ChartWidget
         // 1. QUERY DASAR (Filter Wilayah/Role)
         $query = Pengajuan::query();
 
-        if ($user->isSuperAdmin()) {
+        if ($user->isSuperAdmin() || $user->isManajemen()) {
             // No filter
         } elseif ($user->isAdmin()) {
             // filter jika admin ditugaskan wilayah

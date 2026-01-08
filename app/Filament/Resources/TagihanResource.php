@@ -232,8 +232,9 @@ class TagihanResource extends Resource
 
     public static function canViewAny(): bool
     {
-        // Menu ini bisa dilihat oleh: Superadmin, Admin
+        // Menu ini bisa dilihat oleh: 
         return Auth::user()->isSuperAdmin()
+            || Auth::user()->isManajemen()
             || Auth::user()->isAdmin();
     }
 
@@ -247,7 +248,7 @@ class TagihanResource extends Resource
         $user = auth()->user();
 
         // 3. Jika Super Admin, tampilkan semua (bypass filter)
-        if ($user->isSuperAdmin()) {
+        if ($user->isSuperAdmin() || $user->isManajemen()) {
             return $query;
         }
 

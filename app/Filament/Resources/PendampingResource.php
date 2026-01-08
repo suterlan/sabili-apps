@@ -273,14 +273,15 @@ class PendampingResource extends Resource
                     ->color('warning')
                     ->slideOver()
                     // Hanya Tampil untuk Admin & SuperAdmin
-                    ->visible(fn() => Auth::user()->isAdmin() || Auth::user()->isSuperAdmin()),
+                    ->visible(fn() => Auth::user()->isAdmin() || Auth::user()->isSuperAdmin() || Auth::user()->isManajemen()),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                     // Opsional: Export yang dicentang saja
                     \pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction::make(),
-                ]),
+                ])
+                    ->visible(fn() => Auth::user()->isSuperAdmin()),
             ]);
     }
 
@@ -306,6 +307,7 @@ class PendampingResource extends Resource
     {
         // Menu ini bisa dilihat oleh: Superadmin, Admin, Koordinator
         return Auth::user()->isSuperAdmin()
+            || Auth::user()->isManajemen()
             || Auth::user()->isAdmin()
             || Auth::user()->isKoordinator();
     }
@@ -313,7 +315,7 @@ class PendampingResource extends Resource
     // Edit dikontrol via Action Button di table, tapi method ini harus true/false based on logic
     public static function canEdit($record): bool
     {
-        return Auth::user()->isAdmin() || Auth::user()->isSuperAdmin();
+        return Auth::user()->isAdmin() || Auth::user()->isSuperAdmin() || Auth::user()->isManajemen();
     }
 
     // Matikan fitur Create (Input pendamping tetap dari menu User biasa)
