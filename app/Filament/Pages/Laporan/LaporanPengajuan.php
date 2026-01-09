@@ -180,6 +180,10 @@ class LaporanPengajuan extends Page implements HasTable
                     ->icon('heroicon-m-arrow-down-tray')
                     ->exports([
                         ExcelExport::make()
+                            // =======================================================
+                            // Paksa Export menggunakan query tabel yang sudah difilter
+                            // =======================================================
+                            ->modifyQueryUsing(fn($query) => $this->getFilteredTableQuery())
                             ->withColumns([
                                 Column::make('verified_at')->heading('Tgl. Verifikasi'),
                                 Column::make('user.name')->heading('Pelaku Usaha'),
