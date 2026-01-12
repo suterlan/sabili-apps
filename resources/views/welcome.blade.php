@@ -159,11 +159,18 @@
     </div>
 
     <footer class="bg-white border-t border-gray-200">
-        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 md:flex md:items-center md:justify-between lg:px-8">
-            <div class="mt-8 md:mt-0 md:order-1">
-                <p class="text-center text-base text-gray-400">
-                    &copy; {{ date('Y') }} Sabili Community. All rights reserved.
-                </p>
+        <div class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 text-center text-gray-500">
+            <div class="mb-2">
+                <p class="font-semibold text-gray-700">Main Office Sabili</p>
+                <p class="text-sm">Jl. R.H Mulya, Desa Pusakasari, Kecamatan Leles, Kabupaten Cianjur, Jawa Barat</p>
+            </div>
+            <div class="mb-4 text-sm">
+                <a href="mailto:sabiliapps@gmail.com" class="hover:text-amber-600">sabiliapps@gmail.com</a>
+                <span class="mx-2">|</span>
+                <a href="tel:085712953879" class="hover:text-amber-600">0857-1295-3879</a>
+            </div>
+            <div class="text-xs text-gray-400">
+                &copy; {{ date('Y') }} Sabili Community. All rights reserved.
             </div>
         </div>
     </footer>
