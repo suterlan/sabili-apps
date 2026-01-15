@@ -29,17 +29,22 @@ class ImportTagihan implements ToModel, WithHeadingRow
 
         // 1. AMBIL & BERSIHKAN DATA
         $nik = isset($row['nik_jangan_ubah']) ? trim($row['nik_jangan_ubah']) : null;
-        $noInvoice = isset($row['nomor_invoice_auto']) ? trim($row['nomor_invoice_auto']) : null;
+        $noInvoice = isset($row['nomor_invoice_auto_group']) ? trim($row['nomor_invoice_auto_group']) : null;
+
         $linkBayar = isset($row['link_pembayaran_opsional']) ? trim($row['link_pembayaran_opsional']) : null;
 
         // Bersihkan Nominal (Hapus Rp, Titik, Koma jika ada, agar jadi integer murni)
         $rawNominal = isset($row['total_nominal_wajib_isi']) ? $row['total_nominal_wajib_isi'] : 0;
         $nominal = (float) preg_replace('/[^0-9]/', '', (string) $rawNominal);
 
+        // Jika user menggunakan template lama, nama kolom mungkin beda, kita handle fallback
+        if (!$noInvoice && isset($row['nomor_invoice_auto'])) {
+            $noInvoice = trim($row['nomor_invoice_auto']);
+        }
+
         // Validasi Wajib
         if (empty($nik) || empty($noInvoice)) {
             $this->gagal++;
-
             return null; // Skip baris kosong/rusak
         }
 
@@ -112,20 +117,33 @@ class ImportTagihan implements ToModel, WithHeadingRow
                     ]
                 );
 
+                // B. SAFETY LOCK (PENTING UNTUK GROUPING!)
+                // ---------------------------------------------------------
+                // Mencegah kasus: Invoice sudah dibuat untuk Pendamping A, 
+                // tapi Excel baris ini milik Pendamping B tapi pakai No.Invoice yang sama.
+                if ($tagihan->pendamping_id != $pengajuan->pendamping_id) {
+                    throw new \Exception("Konflik Pendamping: Invoice $noInvoice milik orang lain.");
+                }
+
                 // Update Counter & Update Data Lama (Jika perlu)
                 if ($tagihan->wasRecentlyCreated) {
                     $this->invoiceBaru++;
                 } else {
                     $this->invoiceLama++;
 
+                    // Logic Update Nominal:
+                    // Karena ini grouping, kita asumsikan User mengisi 'Total Nominal' yang benar di Excel.
+                    // Kita update nominal HANYA JIKA di Excel nilainya > 0.
+                    // Ini mencegah nominal jadi 0 jika user mengosongkan baris ke-2, ke-3 dst.
+                    if ($nominal > 0 && $tagihan->total_nominal != $nominal) {
+                        $tagihan->update(['total_nominal' => $nominal]);
+                    }
+
                     // Logic Update: Jika invoice sudah ada, apakah mau update Link/Nominal?
                     // Disini saya set update jika ada data baru di excel
                     $updateData = [];
                     if (! empty($linkBayar)) {
                         $updateData['link_pembayaran'] = $linkBayar;
-                    }
-                    if ($nominal > 0) {
-                        $updateData['total_nominal'] = $nominal;
                     }
 
                     if (! empty($updateData)) {

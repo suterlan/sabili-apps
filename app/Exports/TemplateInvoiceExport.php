@@ -26,32 +26,54 @@ class TemplateInvoiceExport implements FromCollection, ShouldAutoSize, WithHeadi
             $query->where('verificator_id', auth()->id());
         }
 
-        // 3. Eksekusi Query
-        return $query->get()
-            ->map(function ($item) {
-                return [
-                    'nik' => $item->user->nik . ' ', // Paksa string biar angka 0 tidak hilang
-                    'nama_pelaku_usaha' => $item->user->name,
-                    'pendamping' => $item->pendamping->name ?? '-',
-                    // Panggil fungsi dari Model, jangan tulis manual disini
-                    'nomor_invoice' => $item->auto_invoice_number,
-                    'total_nominal' => '', // <--- ADMIN TINGGAL ISI INI
-                    'link_pembayaran' => '', // <--- DAN INI
-                ];
-            });
+        // Ambil data terlebih dahulu
+        $data = $query->get();
+
+        // 3. LOGIKA GROUPING (Fix)
+        // Array untuk menyimpan mapping: [pendamping_id => 'NOMOR_INVOICE_XYZ']
+        $invoiceMap = [];
+
+        return $data->map(function ($item) use (&$invoiceMap) {
+
+            // Ambil ID Pendamping sebagai Key
+            // Jika pendamping null (jarang terjadi), kita pakai ID pengajuan biar unik sendiri
+            $key = $item->pendamping_id ?? 'single_' . $item->id;
+
+            // Cek apakah pendamping ini sudah punya nomor invoice di batch export ini?
+            if (! isset($invoiceMap[$key])) {
+                // Jika BELUM, generate nomor baru dan simpan ke memory
+                // Asumsi: auto_invoice_number menghasilkan string unik
+                $invoiceMap[$key] = $item->auto_invoice_number;
+            }
+
+            // Ambil nomor yang sudah disimpan (agar sama untuk pendamping yang sama)
+            $nomorInvoiceFixed = $invoiceMap[$key];
+
+            return [
+                'nik' => $item->user->nik . ' ',
+                'nama_pelaku_usaha' => $item->user->name,
+                'pendamping' => $item->pendamping->name ?? '-',
+
+                // INI YANG BERUBAH: Menggunakan nomor yang sudah di-grouping
+                'nomor_invoice' => $nomorInvoiceFixed,
+
+                'total_nominal' => '',
+                'link_pembayaran' => '',
+            ];
+        });
     }
 
     public function headings(): array
     {
         return [
             ['TEMPLATE IMPORT TERBIT INVOICE'],
-            ['Catatan: Hapuslah baris data jika tidak termasuk dalam kategori invoice. Jika ingin invoice grouping, silahkan (copy/paste) gunakan nomor invoice yang sama pada pendamping yang sama.'],
-            [''], // Spasi
+            ['Catatan: Nomor Invoice otomatis disamakan berdasarkan Pendamping. Admin cukup isi Total Nominal.'],
+            [''],
             [
                 'NIK (JANGAN UBAH)', // A
                 'NAMA PELAKU USAHA', // B
                 'PENDAMPING', // C
-                'NOMOR INVOICE (AUTO)', // D
+                'NOMOR INVOICE (AUTO GROUP)', // D
                 'TOTAL NOMINAL (WAJIB ISI)', // E
                 'LINK PEMBAYARAN (OPSIONAL)', // F
             ],

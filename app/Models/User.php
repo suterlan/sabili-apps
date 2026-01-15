@@ -201,6 +201,13 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(Pengajuan::class, 'pendamping_id');
     }
 
+    // Relasi: Mengambil semua pengajuan yang DIVERIFIKASI oleh admin ini
+    // (Inverse dari Pengajuan belongsTo Verificator)
+    public function pengajuansVerified()
+    {
+        return $this->hasMany(Pengajuan::class, 'verificator_id');
+    }
+
     /**
      * Cek apakah profil Pendamping sudah lengkap.
      */

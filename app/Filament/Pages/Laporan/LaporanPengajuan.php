@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Laporan;
 
+use App\Filament\Widgets\StatsKinerjaVerifikator;
 use App\Models\Pengajuan;
 use App\Models\User; // Import User
 use Carbon\Carbon;
@@ -113,27 +114,26 @@ class LaporanPengajuan extends Page implements HasTable
                 // C. Filter Tanggal (Custom)
                 Filter::make('periode')
                     ->form([
-                        Grid::make(2)
-                            ->schema([
-                                DatePicker::make('verified_from')
-                                    ->label('Dari Tanggal')
-                                    ->default(now()->startOfDay()) // Default hari ini (Solusi Laporan Harian)
-                                    ->native(false)
-                                    ->displayFormat('d M Y')
-                                    ->closeOnDateSelection()
-                                    ->prefixIcon('heroicon-m-calendar-days')
-                                    ->maxDate(now()),
+                        DatePicker::make('verified_from')
+                            ->label('Dari Tgl')
+                            ->default(now()->startOfDay()) // Default hari ini (Solusi Laporan Harian)
+                            ->native(false)
+                            ->displayFormat('d M Y')
+                            ->closeOnDateSelection()
+                            ->prefixIcon('heroicon-m-calendar-days')
+                            ->maxDate(now()),
 
-                                DatePicker::make('verified_until')
-                                    ->label('Sampai Tanggal')
-                                    ->default(now()->endOfDay()) // Default hari ini
-                                    ->native(false)
-                                    ->displayFormat('d M Y')
-                                    ->closeOnDateSelection()
-                                    ->prefixIcon('heroicon-m-calendar-days')
-                                    ->maxDate(now()),
-                            ]),
+                        DatePicker::make('verified_until')
+                            ->label('Sampai Tgl')
+                            ->default(now()->endOfDay()) // Default hari ini
+                            ->native(false)
+                            ->displayFormat('d M Y')
+                            ->closeOnDateSelection()
+                            ->prefixIcon('heroicon-m-calendar-days')
+                            ->maxDate(now()),
                     ])
+                    ->columns(2) // Mengatur form internal agar memiliki 2 kolom.
+                    ->columnSpan(2) // Membuat filter ini memakan 2 kolom di layout filter utama.
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
                             ->when(
@@ -196,6 +196,13 @@ class LaporanPengajuan extends Page implements HasTable
                             ->withFilename(fn($resource) => 'laporan-pengajuan-' . date('Y-m-d-H-i'))
                     ]),
             ]);
+    }
+
+    protected function getFooterWidgets(): array
+    {
+        return [
+            StatsKinerjaVerifikator::class,
+        ];
     }
 
     public static function canAccess(): bool
