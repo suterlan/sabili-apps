@@ -6,63 +6,122 @@ use App\Models\Pengajuan;
 use App\Models\User;
 use Filament\Widgets\Widget;
 use Illuminate\Support\Facades\DB;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Forms\Form;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Grid;
+use Carbon\Carbon;
 
-class StatsKinerjaVerifikator extends Widget
+class StatsKinerjaVerifikator extends Widget implements HasForms
 {
+    use InteractsWithForms;
+
     protected static string $view = 'filament.widgets.stats-kinerja-verifikator';
 
-    // Mengatur lebar widget agar penuh satu layar
+    // Agar widget melebar penuh
     protected int | string | array $columnSpan = 'full';
 
+    // Variabel untuk menampung data filter form
+    public ?array $data = [];
+
+    // Set default tanggal saat widget pertama kali dimuat
+    public function mount(): void
+    {
+        $this->form->fill([
+            'start_date' => now()->startOfMonth()->toDateString(),
+            'end_date'   => now()->endOfMonth()->toDateString(),
+        ]);
+    }
+
+    // Definisi Form Filter
+    public function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                Grid::make(4) // Grid 4 kolom agar input tanggal tidak terlalu panjang
+                    ->schema([
+                        DatePicker::make('start_date')
+                            ->label('Dari Tanggal (Verifikasi)')
+                            ->native(false)
+                            ->displayFormat('d M Y')
+                            ->default(now()->startOfMonth())
+                            ->live() // Update real-time saat dipilih
+                            ->afterStateUpdated(fn() => $this->dispatch('refresh-widget')),
+
+                        DatePicker::make('end_date')
+                            ->label('Sampai Tanggal (Verifikasi)')
+                            ->native(false)
+                            ->displayFormat('d M Y')
+                            ->default(now()->endOfMonth())
+                            ->live() // Update real-time saat dipilih
+                            ->afterStateUpdated(fn() => $this->dispatch('refresh-widget')),
+                    ]),
+            ])
+            ->statePath('data');
+    }
+
+    // Logic Hak Akses & Lokasi Tampil
     public static function canView(): bool
     {
-        // 1. Cek Role: Jika BUKAN Superadmin, sembunyikan (return false)
+        // 1. Hanya Superadmin
         if (! auth()->user()->isSuperAdmin()) {
             return false;
         }
 
-        // 2. Cek Lokasi: Sembunyikan jika sedang berada di Dashboard Utama
-        // Filament otomatis me-load widget di dashboard, kita harus mencegahnya.
-        // Ganti 'filament.admin.pages.dashboard' sesuai nama route panel Anda jika sudah diubah.
+        // 2. Jangan tampil di Dashboard Utama (hanya di halaman Laporan)
+        // Sesuaikan nama route jika berbeda, default filament biasanya: filament.admin.pages.dashboard
         if (request()->routeIs('filament.admin.pages.dashboard')) {
             return false;
         }
 
-        // Jika lolos kedua cek di atas (User = Superadmin DAN Halaman = Laporan), tampilkan.
         return true;
     }
 
     public function getViewData(): array
     {
-        // 1. Ambil Semua Status yang mungkin ada (dari Model Pengajuan)
-        // Pastikan Anda punya method getStatusVerifikasiOptions() di Model Pengajuan
-        // Atau list manual array-nya disini
-        $statuses = array_keys(Pengajuan::getStatusVerifikasiOptions());
+        // Ambil range tanggal dari form
+        $startDate = $this->data['start_date'] ?? null;
+        $endDate   = $this->data['end_date'] ?? null;
 
-        // 2. Query Agregat (Group by Verifikator & Status)
-        // Hasil: [verificator_id, status, total]
-        $rawStats = Pengajuan::query()
-            ->select('verificator_id', 'status_verifikasi', DB::raw('count(*) as total'))
+        // Siapkan Query
+        $query = Pengajuan::query()
+            ->select('verificator_id', 'status_verifikasi', DB::raw('count(*) as total'));
+
+        // Terapkan Filter Tanggal pada kolom 'verified_at'
+        if ($startDate) {
+            $query->whereDate('verified_at', '>=', $startDate);
+        }
+        if ($endDate) {
+            $query->whereDate('verified_at', '<=', $endDate);
+        }
+
+        // Eksekusi Query Grouping
+        $rawStats = $query
             ->groupBy('verificator_id', 'status_verifikasi')
             ->get();
 
-        // 3. Ambil Data Verifikator (User dengan role admin/verifikator)
+        // Ambil list semua status yang mungkin ada (untuk header tabel)
+        $statuses = array_keys(Pengajuan::getStatusVerifikasiOptions());
+
+        // Ambil list User yang pernah memverifikasi (pastikan relasi pengajuansVerified ada di Model User)
         $verificators = User::whereHas('pengajuansVerified')->get();
 
-        // 4. Mapping Data untuk View
-        // Kita buat struktur: $data[user_id][status] = total
+        // Mapping data agar mudah dipanggil di View: $matrix[user_id][status]
         $matrix = [];
         foreach ($rawStats as $stat) {
-            $verifId = $stat->verificator_id ?? 0; // 0 untuk yang belum diklaim
+            $verifId = $stat->verificator_id ?? 0; // 0 = belum diklaim
             $matrix[$verifId][$stat->status_verifikasi] = $stat->total;
         }
 
         return [
-            'statuses' => $statuses,
+            'statuses'     => $statuses,
             'verificators' => $verificators,
-            'matrix' => $matrix,
-            // Opsional: Hitung yang belum diklaim (verifikator_id = null)
-            'unclaimed' => $matrix[0] ?? [],
+            'matrix'       => $matrix,
+            'unclaimed'    => $matrix[0] ?? [], // Data yang verifikatornya NULL
+            'filter_label' => ($startDate && $endDate)
+                ? Carbon::parse($startDate)->format('d M Y') . ' s/d ' . Carbon::parse($endDate)->format('d M Y')
+                : 'Semua Waktu',
         ];
     }
 }
