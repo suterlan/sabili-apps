@@ -14,6 +14,24 @@ class StatsKinerjaVerifikator extends Widget
     // Mengatur lebar widget agar penuh satu layar
     protected int | string | array $columnSpan = 'full';
 
+    public static function canView(): bool
+    {
+        // 1. Cek Role: Jika BUKAN Superadmin, sembunyikan (return false)
+        if (! auth()->user()->isSuperAdmin()) {
+            return false;
+        }
+
+        // 2. Cek Lokasi: Sembunyikan jika sedang berada di Dashboard Utama
+        // Filament otomatis me-load widget di dashboard, kita harus mencegahnya.
+        // Ganti 'filament.admin.pages.dashboard' sesuai nama route panel Anda jika sudah diubah.
+        if (request()->routeIs('filament.admin.pages.dashboard')) {
+            return false;
+        }
+
+        // Jika lolos kedua cek di atas (User = Superadmin DAN Halaman = Laporan), tampilkan.
+        return true;
+    }
+
     public function getViewData(): array
     {
         // 1. Ambil Semua Status yang mungkin ada (dari Model Pengajuan)
