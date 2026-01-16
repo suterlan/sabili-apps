@@ -60,6 +60,7 @@ class User extends Authenticatable implements FilamentUser
         'file_foto_bersama',
         'file_foto_nib',
         'file_foto_usaha',
+        'file_video_usaha',
         // field penugasan admin
         'assigned_districts',
     ];

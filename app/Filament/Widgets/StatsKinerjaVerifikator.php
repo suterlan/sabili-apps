@@ -64,18 +64,7 @@ class StatsKinerjaVerifikator extends Widget implements HasForms
     // Logic Hak Akses & Lokasi Tampil
     public static function canView(): bool
     {
-        // 1. Hanya Superadmin
-        if (! auth()->user()->isSuperAdmin()) {
-            return false;
-        }
-
-        // 2. Jangan tampil di Dashboard Utama (hanya di halaman Laporan)
-        // Sesuaikan nama route jika berbeda, default filament biasanya: filament.admin.pages.dashboard
-        if (request()->routeIs('filament.admin.pages.dashboard')) {
-            return false;
-        }
-
-        return true;
+        return auth()->user()->isSuperAdmin();
     }
 
     public function getViewData(): array

@@ -198,13 +198,6 @@ class LaporanPengajuan extends Page implements HasTable
             ]);
     }
 
-    protected function getFooterWidgets(): array
-    {
-        return [
-            StatsKinerjaVerifikator::class,
-        ];
-    }
-
     public static function canAccess(): bool
     {
         return auth()->user()->isSuperAdmin();

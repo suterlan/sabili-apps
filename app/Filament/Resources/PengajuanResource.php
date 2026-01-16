@@ -1115,6 +1115,49 @@ class PengajuanResource extends Resource
 
                         ]),
                     ]),
+
+                // =========================================================
+                // BAGIAN 3: DOKUMEN VIDEO (CUSTOM PLAYER)
+                // =========================================================
+                \Filament\Infolists\Components\Section::make('Dokumentasi Video')
+                    ->icon('heroicon-o-video-camera')
+                    ->collapsible()
+                    ->schema([
+                        \Filament\Infolists\Components\TextEntry::make('user.file_video_usaha')
+                            ->hiddenLabel() // Label disembunyikan agar player lebih luas
+                            ->columnSpanFull()
+                            // Hanya muncul jika field video terisi di database
+                            ->visible(fn($record) => !empty($record->user->file_video_usaha))
+                            ->formatStateUsing(fn($state) => new \Illuminate\Support\HtmlString("
+                                <div class='w-full border rounded-xl overflow-hidden bg-gray-900 shadow-md'>
+                                    <div class='relative w-full bg-black flex justify-center'>
+                                        <video controls preload='metadata' class='w-full max-h-[500px]'>
+                                            <source src='" . route('drive.image', ['path' => $state]) . "' type='video/mp4'>
+                                            Browser Anda tidak mendukung tag video.
+                                        </video>
+                                    </div>
+                                    
+                                    <div class='p-3 bg-gray-50 border-t border-gray-200 flex flex-wrap justify-between items-center gap-2'>
+                                        <div class='flex items-center gap-2'>
+                                            <div class='p-1.5 bg-blue-100 text-blue-600 rounded-lg'>
+                                                <svg class='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'></path></svg>
+                                            </div>
+                                            <div>
+                                                <p class='text-sm font-bold text-gray-700'>Video Tempat Usaha</p>
+                                                <p class='text-xs text-gray-500'>Tersimpan di Google Drive</p>
+                                            </div>
+                                        </div>
+
+                                        <a href='" . route('drive.image', ['path' => $state]) . "' target='_blank' 
+                                           class='inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:ring-primary-500'>
+                                           <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'></path></svg>
+                                           Download / Putar
+                                        </a>
+                                    </div>
+                                </div>
+                            ")),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 }

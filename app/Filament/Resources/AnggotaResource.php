@@ -271,6 +271,11 @@ class AnggotaResource extends Resource
                                     // 5. BERSAMA PENDAMPING
                                     self::getUploadGroup('file_foto_bersama', 'Foto Bersama Pendamping', 'foto_bersama', $form),
 
+                                    // --- TAMBAHAN BARU: VIDEO ---
+                                    // Letakkan di paling bawah atau sesuai urutan yang diinginkan
+                                    // Parameter: field, label, prefix, form, isRequired(false)
+                                    self::getVideoGroup('file_video_usaha', 'Video Produk / Usaha', 'video_usaha', $form, true),
+
                                 ])->columns(2),
                         ]),
 
@@ -818,11 +823,13 @@ class AnggotaResource extends Resource
             return $query->where('pendamping_id', $user->id);
         }
 
-        // 4. KOORDINATOR (Logika Baru)
+        // 4. KOORDINATOR (Logika Baru: Berdasarkan Kecamatan Pendamping)
         if ($user->isKoordinator()) {
-            // Koordinator melihat anggota berdasarkan KECAMATAN
-            // Anggota yang kecamatannya SAMA dengan kecamatan Koordinator
-            return $query->where('kecamatan', $user->kecamatan);
+            // BACA: Ambil Pelaku Usaha yang 'pendamping'-nya memiliki 'kecamatan' 
+            // yang sama dengan kecamatan si Koordinator.
+            return $query->whereHas('pendamping', function ($q) use ($user) {
+                $q->where('kecamatan', $user->kecamatan);
+            });
         }
 
         return $query;
@@ -1010,6 +1017,40 @@ class AnggotaResource extends Resource
                         'md' => 2,
                     ])
                     ->columnSpanFull(),
+
+                // =========================================================
+                // BAGIAN 3: DOKUMEN VIDEO
+                // =========================================================
+                Section::make('Dokumen Video')
+                    ->icon('heroicon-o-video-camera')
+                    ->collapsed(false) // Boleh di-collapse jika ingin hemat ruang
+                    ->schema([
+
+                        // CONTOH FIELD VIDEO (Sesuaikan nama field dengan database Anda, misal: file_video_usaha)
+                        TextEntry::make('file_video_usaha')
+                            ->label('Video Produk / Usaha')
+                            ->columnSpanFull()
+                            ->hidden(fn($state) => empty($state)) // Sembunyikan jika tidak ada video
+                            ->formatStateUsing(fn($state) => new \Illuminate\Support\HtmlString("
+                                <div class='w-full max-w-2xl mx-auto border rounded-lg overflow-hidden bg-gray-900 shadow-lg'>
+                                    <video controls class='w-full' style='max-height: 400px;'>
+                                        <source src='" . route('drive.image', ['path' => $state]) . "' type='video/mp4'>
+                                        Browser Anda tidak mendukung tag video.
+                                    </video>
+                                    <div class='p-3 bg-gray-50 border-t flex justify-between items-center'>
+                                        <span class='text-xs text-gray-500'>Format: MP4</span>
+                                        <a href='" . route('drive.image', ['path' => $state]) . "' target='_blank' 
+                                        class='text-sm font-bold text-primary-600 hover:text-primary-800 flex items-center gap-1'>
+                                        <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'></path></svg>
+                                        Download Video
+                                        </a>
+                                    </div>
+                                </div>
+                            ")),
+
+                        // Jika ada video lain, copy-paste blok TextEntry di atas dan ganti nama field-nya
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 
@@ -1083,5 +1124,62 @@ class AnggotaResource extends Resource
                     fn($livewire) => $isRequired && ($livewire instanceof \Filament\Resources\Pages\CreateRecord)
                 ),
         ])->columnSpan(1);
+    }
+
+    public static function getVideoGroup($field, $label, $prefix, $form, $isRequired = false)
+    {
+        return Forms\Components\Group::make([
+            // 1. PREVIEW VIDEO (Custom Placeholder)
+            // Ini yang akan tampil jika data sudah tersimpan di database
+            Forms\Components\Placeholder::make('preview_' . $prefix)
+                ->hidden(fn($record) => empty($record?->$field))
+                ->content(fn($record) => new \Illuminate\Support\HtmlString("
+                <div class='mb-2 p-3 border rounded bg-gray-50 flex flex-col gap-2'>
+                    <div class='bg-gray-800 rounded overflow-hidden'>
+                        <video width='100%' height='240' controls style='max-height: 300px;'>
+                            <source src='" . route('drive.image', ['path' => $record->$field ?? '']) . "' type='video/mp4'>
+                            Browser Anda tidak mendukung tag video.
+                        </video>
+                    </div>
+                    <div class='flex justify-between items-center px-1'>
+                        <div class='text-xs text-success-600 font-bold flex items-center gap-1'>
+                            <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M5 13l4 4L19 7'></path></svg>
+                            Video Tersimpan
+                        </div>
+                        <a href='" . route('drive.image', ['path' => $record->$field ?? '']) . "' target='_blank' class='text-xs text-primary-600 underline font-bold hover:text-primary-800'>
+                            Download / Buka Tab Baru
+                        </a>
+                    </div>
+                </div>
+            ")),
+
+            // 2. COMPONENT UPLOAD
+            Forms\Components\FileUpload::make($field)
+                ->label(fn($record) => empty($record?->$field) ? "Upload $label" : "Ganti $label")
+                ->disk('google')
+                ->visibility('private')
+
+                // --- KUNCI MENGHILANGKAN LOADING ---
+                ->fetchFileInformation(false) // Jangan coba ambil info file (size/type) dari google drive
+                ->formatStateUsing(fn() => null) // Paksa kosong saat load agar tidak mencoba preview file lama
+                // -----------------------------------
+
+                ->acceptedFileTypes(['video/mp4', 'video/quicktime', 'video/x-msvideo'])
+                ->maxSize(20480) // 20 MB
+                ->uploadingMessage('Sedang mengupload video...')
+
+                // Logic Direktori & Nama File
+                ->directory(fn(Get $get) => 'dokumen_anggota_' . Str::slug(Auth::user()->name) . '/' . Str::slug($get('name') ?? 'temp'))
+                ->getUploadedFileNameForStorageUsing(fn($file, Get $get) => $prefix . '_' . Str::slug($get('name') ?? 'tanpa-nama') . '_' . time() . '.' . $file->getClientOriginalExtension())
+
+                // Simpan state hanya jika ada file baru yang diupload
+                ->dehydrated(fn($state) => filled($state))
+
+                ->helperText('Format MP4/MOV. Maksimal 20MB. Pastikan koneksi stabil.')
+
+                ->required(
+                    fn($livewire) => $isRequired && ($livewire instanceof \Filament\Resources\Pages\CreateRecord)
+                ),
+        ])->columnSpan(2);
     }
 }
