@@ -64,7 +64,20 @@ class StatsKinerjaVerifikator extends Widget implements HasForms
     // Logic Hak Akses & Lokasi Tampil
     public static function canView(): bool
     {
-        return auth()->user()->isSuperAdmin();
+        // 1. Cek Hak Akses (Super Admin saja)
+        if (! auth()->user()->isSuperAdmin()) {
+            return false;
+        }
+
+        // 2. Cek Lokasi Halaman (Filter Dashboard)
+        // Jika route saat ini adalah dashboard, return false (JANGAN TAMPIL)
+        // Menggunakan wildcard '*' agar kompatibel dengan ID panel apa pun (admin, app, dll)
+        if (request()->routeIs('filament.*.pages.dashboard')) {
+            return false;
+        }
+
+        // Widget akan tetap tampil jika dipanggil di halaman lain (misal: Resource List)
+        return true;
     }
 
     public function getViewData(): array
