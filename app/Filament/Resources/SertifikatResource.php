@@ -83,58 +83,11 @@ class SertifikatResource extends Resource
                     ->button()
                     ->openUrlInNewTab()
 
-                    // 1. LOGIKA WARNA:
-                    // Jika Lunas = Primary (Biru), Jika Belum = Gray (Abu-abu seolah disabled)
-                    ->color(function (Pengajuan $record) {
-                        $statusBayar = $record->tagihan?->status_pembayaran;
-                        // Jika Superadmin, selalu aktif (Primary)
-                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) return 'primary';
-
-                        return $statusBayar === Tagihan::STATUS_DIBAYAR ? 'primary' : 'gray';
-                    })
-
-                    // 2. LOGIKA URL:
-                    // Jika Lunas = Link File, Jika Belum = NULL (Tidak ada link)
-                    ->url(function (Pengajuan $record) {
-                        $statusBayar = $record->tagihan?->status_pembayaran;
-                        // Jika Superadmin, selalu dapat link
-                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) {
-                            return Storage::url($record->file_sertifikat);
-                        }
-
-                        return $statusBayar === Tagihan::STATUS_DIBAYAR
-                            ? Storage::url($record->file_sertifikat)
-                            : null; // Link mati
-                    })
-
-                    // 3. LOGIKA AKSI (BACKUP):
-                    // Jika user memaksa klik tombol abu-abu, kita kasih notifikasi (Opsional tapi bagus untuk UX)
-                    ->action(function (Pengajuan $record) {
-                        $statusBayar = $record->tagihan?->status_pembayaran;
-
-                        // Jika belum lunas dan bukan superadmin
-                        if ($statusBayar !== Tagihan::STATUS_DIBAYAR && !auth()->user()->isSuperAdmin() && !auth()->user()->isManajemen()) {
-                            \Filament\Notifications\Notification::make()
-                                ->warning()
-                                ->title('Akses Dibatasi')
-                                ->body('Invoice belum lunas. Silakan selesaikan pembayaran invoice terlebih dahulu.')
-                                ->send();
-                        }
-                    })
-
-                    // 4. LOGIKA TOOLTIP:
-                    // Sekarang pasti muncul karena tombol tidak benar-benar disabled secara HTML
-                    ->tooltip(function (Pengajuan $record) {
-                        if (auth()->user()->isSuperAdmin() || auth()->user()->isManajemen()) return 'Unduh Sertifikat';
-
-                        $statusBayar = $record->tagihan?->status_pembayaran;
-
-                        if ($statusBayar !== Tagihan::STATUS_DIBAYAR) {
-                            return 'Belum dapat diunduh. Silakan selesaikan pembayaran untuk mengunduh.';
-                        }
-
-                        return 'Siap Unduh';
-                    }),
+                    // Menghapus batasan download berdasarkan status pembayaran.
+                    // Tombol akan selalu aktif dan menyediakan link download untuk semua role.
+                    ->color('primary')
+                    ->url(fn(Pengajuan $record) => $record->file_sertifikat ? Storage::url($record->file_sertifikat) : null)
+                    ->tooltip('Unduh Sertifikat'),
             ])
             ->checkIfRecordIsSelectableUsing(fn() => false);
     }

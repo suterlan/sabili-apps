@@ -274,7 +274,7 @@ class AnggotaResource extends Resource
                                     // --- TAMBAHAN BARU: VIDEO ---
                                     // Letakkan di paling bawah atau sesuai urutan yang diinginkan
                                     // Parameter: field, label, prefix, form, isRequired(false)
-                                    self::getVideoGroup('file_video_usaha', 'Video Produk / Usaha', 'video_usaha', $form, true),
+                                    self::getVideoGroup('file_video_usaha', 'Video Produk / Usaha', 'video_usaha', $form, false),
 
                                 ])->columns(2),
                         ]),
