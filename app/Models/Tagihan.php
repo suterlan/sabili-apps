@@ -13,6 +13,7 @@ class Tagihan extends Model
         'pendamping_id',
         'total_nominal',
         'link_pembayaran',
+        'via',
         'status_pembayaran', // DIBAYAR, BELUM DIBAYAR
         'tanggal_terbit',
     ];

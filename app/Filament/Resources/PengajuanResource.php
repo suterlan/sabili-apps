@@ -87,6 +87,8 @@ class PengajuanResource extends Resource
                         Pengajuan::STATUS_LOLOS_VERIFIKASI,
                         Pengajuan::STATUS_PENGAJUAN_DIKIRIM => 'info',
 
+                        Pengajuan::STATUS_FATWA => 'purple',
+
                         // Hijau (Berhasil, menunggu invoice)
                         Pengajuan::STATUS_SERTIFIKAT,
                         // invoice/tagihan muncul
@@ -510,14 +512,14 @@ class PengajuanResource extends Resource
                         if ($user->isManajemen()) return false;
 
                         // --- ATURAN LOGIKA PER TAB ---
-                        // A. Tab Selesai -> TOMBOL HILANG TOTAL
-                        if ($tab === 'selesai') {
+                        // A. Jika bukan superadmin dan Tab = selesai return false
+                        if (!$isSuperAdmin && $tab === 'selesai') {
                             return false;
                         }
 
-                        // B. Tab Siap Invoice -> HANYA SUPER ADMIN
-                        // Verifikator asli tidak boleh klik, harus Super Admin
-                        if (in_array($tab, ['siap_invoice', 'invoice'])) {
+                        // Tab Siap Invoice / Invoice / Fatwa -> Butuh Super Admin (atau Verifikator Authorized)
+                        // Disini kita izinkan SuperAdmin untuk tab Fatwa & Invoice
+                        if (in_array($tab, ['siap_invoice', 'invoice', 'fatwa'])) {
                             return $isSuperAdmin;
                         }
 
@@ -542,14 +544,27 @@ class PengajuanResource extends Resource
 
                                 Select::make('status_verifikasi')
                                     ->label('Status Baru')
+                                    ->required()
+                                    ->native(false)
+                                    ->live() // Penting agar form di bawahnya bisa responsif
                                     // Menggunakan opsi yang sudah difilter (Tanpa Invoice/Selesai)
                                     ->options(function ($livewire) {
                                         $currentTab = $livewire->activeTab ?? '';
-                                        // JIKA DI TAB 'SIAP INVOICE'
-                                        // Opsinya khusus: Lanjut ke Invoice atau Langsung Selesai
+
+                                        // A. JIKA DI TAB FATWA
+                                        // Ubah Logika: Dari Fatwa LANGSUNG ke Invoice (Skip Sertifikat)
+                                        if ($currentTab === 'fatwa') {
+                                            return [
+                                                Pengajuan::STATUS_INVOICE => 'Buat Invoice (Tanpa Sertifikat)',
+                                                Pengajuan::STATUS_PENGAJUAN_DITOLAK => 'Tolak / Revisi',
+                                            ];
+                                        }
+
+                                        // B. JIKA DI TAB SIAP INVOICE / INVOICE
+                                        // Flow: Sertifikat -> Invoice -> Selesai
                                         if (in_array($currentTab, ['siap_invoice', 'invoice'])) {
                                             return [
-                                                Pengajuan::STATUS_INVOICE => 'Invoice Diajukan',
+                                                Pengajuan::STATUS_INVOICE => 'Buat Invoice',
                                                 Pengajuan::STATUS_SELESAI => 'Selesai / Lunas',
                                             ];
                                         }
@@ -558,9 +573,6 @@ class PengajuanResource extends Resource
                                         // Gunakan opsi standar verifikator (tanpa invoice/selesai)
                                         return Pengajuan::getOpsiManualVerifikator();
                                     })
-                                    ->required()
-                                    ->native(false)
-                                    ->live() // Penting agar form di bawahnya bisa responsif
                                     ->afterStateUpdated(function ($state, \Filament\Forms\Set $set) {
                                         // Opsional: Reset catatan jika status berubah bukan revisi
                                         if (! in_array($state, Pengajuan::getStatRevisi())) {
@@ -574,7 +586,7 @@ class PengajuanResource extends Resource
                                     }),
 
                                 // -------------------------------------------------------------
-                                // [BARU] FIELD UPLOAD SERTIFIKAT
+                                // LOGIKA UPLOAD SERTIFIKAT (HYBRID)
                                 // -------------------------------------------------------------
                                 FileUpload::make('file_sertifikat')
                                     ->label('Upload File Sertifikat (PDF)')
@@ -584,12 +596,23 @@ class PengajuanResource extends Resource
                                     ->downloadable()
                                     ->openable()
                                     ->columnSpanFull()
-                                    // Hanya Tampil jika status = SERTIFIKAT_TERBIT
-                                    ->visible(fn(Get $get) => $get('status_verifikasi') === Pengajuan::STATUS_SERTIFIKAT)
-                                    // Wajib diisi jika status = SERTIFIKAT_TERBIT
-                                    ->required(fn(Get $get) => $get('status_verifikasi') === Pengajuan::STATUS_SERTIFIKAT)
+                                    // TAMPIL JIKA:
+                                    // 1. User memilih "Sertifikat Diterbitkan" (Alur B - Awal)
+                                    // 2. User memilih "Selesai" (Alur A - Akhir, user Fatwa baru upload sekarang)
+                                    ->visible(fn(Get $get) => in_array($get('status_verifikasi'), [
+                                        Pengajuan::STATUS_SERTIFIKAT,
+                                        Pengajuan::STATUS_SELESAI
+                                    ]))
+                                    // WAJIB JIKA:
+                                    // 1. Status 'Sertifikat Diterbitkan' (Selalu Wajib)
+                                    // 2. Status 'Selesai' DAN file belum ada di database (Wajib bagi user Fatwa)
+                                    ->required(
+                                        fn(Get $get, Pengajuan $record) =>
+                                        $get('status_verifikasi') === Pengajuan::STATUS_SERTIFIKAT ||
+                                            ($get('status_verifikasi') === Pengajuan::STATUS_SELESAI && empty($record->file_sertifikat))
+                                    )
                                     ->validationMessages([
-                                        'required' => 'Wajib upload sertifikat halal',
+                                        'required' => 'Sertifikat Halal wajib diupload pada tahap ini.',
                                     ]),
 
                                 // -------------------------------------------------------------
@@ -634,18 +657,12 @@ class PengajuanResource extends Resource
                                     ])
                                     // LOGIC TAMPIL:
                                     // Muncul jika di tab 'siap_invoice' DAN (Status Invoice ATAU Status Selesai)
-                                    ->visible(function (Get $get, $livewire) {
-                                        $currentTab = $livewire->activeTab ?? '';
-                                        $status = $get('status_verifikasi');
-
-                                        // Cek apakah statusnya Invoice atau Selesai
-                                        $isInvoiceOrFinish = in_array($status, [
-                                            Pengajuan::STATUS_INVOICE,
-                                            Pengajuan::STATUS_SELESAI
-                                        ]);
-
-                                        return $currentTab === 'siap_invoice' && $isInvoiceOrFinish;
-                                    }),
+                                    // Form Invoice Muncul jika memilih STATUS_INVOICE (Jalur Fatwa)
+                                    // ATAU STATUS_SELESAI (Jalur Standar/Fatwa Akhir untuk review)
+                                    ->visible(fn(Get $get) => in_array($get('status_verifikasi'), [
+                                        Pengajuan::STATUS_INVOICE,
+                                        Pengajuan::STATUS_SELESAI
+                                    ])),
 
                                 // -------------------------------------------------------------
                                 // FIELD CATATAN REVISI (Standard)
@@ -663,8 +680,26 @@ class PengajuanResource extends Resource
                             ]),
                     ])
                     ->action(function (Pengajuan $record, array $data, Action $action) {
-                        // 1. VALIDASI DATA PELAKU USAHA (USER)
-                        // Hanya dijalankan jika Admin memilih status "Sertifikat Diterbitkan"
+                        // 1. VALIDASI: SERTIFIKAT WAJIB ADA JIKA STATUS SELESAI
+                        // Mencegah status berubah ke 'Selesai' jika file_sertifikat kosong
+                        if ($data['status_verifikasi'] === Pengajuan::STATUS_SELESAI) {
+                            // Cek apakah di database sudah ada, atau di form baru saja diupload
+                            $hasSertifikat = !empty($record->file_sertifikat) || !empty($data['file_sertifikat']);
+
+                            if (!$hasSertifikat) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Sertifikat Belum Ada')
+                                    ->body('Status tidak bisa diubah ke Selesai karena File Sertifikat belum diupload. Silakan upload sertifikat terlebih dahulu.')
+                                    ->persistent()
+                                    ->send();
+
+                                $action->halt(); // Stop proses
+                                return;
+                            }
+                        }
+
+                        // 2. VALIDASI DATA LENGKAP SAAT TERBIT SERTIFIKAT
                         if ($data['status_verifikasi'] === Pengajuan::STATUS_SERTIFIKAT) {
 
                             $user = $record->user; // Mengambil model User

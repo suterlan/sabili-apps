@@ -38,6 +38,8 @@ class Pengajuan extends Model
 
     const STATUS_PENGAJUAN_DITOLAK = 'Pengajuan Ditolak';
 
+    const STATUS_FATWA = 'Komite Fatwa'; // <--- NEW
+
     const STATUS_SERTIFIKAT = 'Sertifikat Diterbitkan';
 
     const STATUS_INVOICE = 'Invoice Diajukan';
@@ -59,7 +61,10 @@ class Pengajuan extends Model
             self::STATUS_PENGAJUAN_DIKIRIM => 'Pengajuan Dikirim',
             self::STATUS_PENGAJUAN_DITOLAK => 'Pengajuan Ditolak',
 
+            // Urutan Logika: Lolos -> Fatwa -> Invoice -> Selesai
+            self::STATUS_FATWA => 'Komite Fatwa', // <--- NEW
             self::STATUS_SERTIFIKAT => 'Sertifikat Diterbitkan',
+
             self::STATUS_INVOICE => 'Invoice Diajukan',
             self::STATUS_SELESAI => 'Selesai',
         ];
@@ -100,6 +105,13 @@ class Pengajuan extends Model
     {
         return [
             self::STATUS_PENGAJUAN_DIKIRIM,
+        ];
+    }
+
+    public static function getStatFatwa(): array
+    {
+        return [
+            self::STATUS_FATWA,
         ];
     }
 

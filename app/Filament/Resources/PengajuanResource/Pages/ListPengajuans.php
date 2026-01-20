@@ -140,6 +140,19 @@ class ListPengajuans extends ListRecords
                 return $filterByVerificator($query); // Apply filter verifikator jika perlu
             });
 
+        // -------------------------------------------------------
+        // TAB BARU: FATWA
+        // -------------------------------------------------------
+        // Pastikan Anda sudah membuat method scope getStatFatwa() di Model Pengajuan
+        $tabs['fatwa'] = Tab::make('Fatwa')
+            ->icon('heroicon-m-scale') // Ikon Timbangan/Hukum
+            ->badgeColor('info') // Warna pembeda (misal Info/Biru Muda atau Custom)
+            ->badge(fn() => $filterByVerificator(Pengajuan::whereIn('status_verifikasi', Pengajuan::getStatFatwa()))->count())
+            ->modifyQueryUsing(function (Builder $query) use ($filterByVerificator) {
+                $query->whereIn('status_verifikasi', Pengajuan::getStatFatwa());
+                return $filterByVerificator($query);
+            });
+
         // Tab Siap Invoice = status sertifikat terbit (Hijau) -> Trigger Tombol Import
         $tabs['siap_invoice'] = Tab::make('Siap Invoice')
             ->icon('heroicon-m-banknotes')
@@ -251,13 +264,18 @@ class ListPengajuans extends ListRecords
                 ->icon('heroicon-m-currency-dollar')
                 ->color('warning')
                 ->button()
-                // VISIBILITY CHECK YANG LEBIH AMAN
+                // ------------------------------------------------------------------
+                // VISIBILITY CHECK UPDATE
+                // Mengizinkan tombol muncul di tab 'siap_invoice' DAN 'fatwa'
+                // ------------------------------------------------------------------
                 ->visible(function () {
-                    // Mengembalikan true HANYA jika tab yang aktif adalah 'siap_invoice' dan hanya superadmin
-                    $isInoviceTab = $this->activeTab === 'siap_invoice';
+                    // Daftar tab yang memperbolehkan import invoice
+                    $allowedTabs = ['siap_invoice', 'fatwa'];
+                    $isAllowedTab = in_array($this->activeTab, $allowedTabs);
+
                     $superAdmin = auth()->user()->isSuperAdmin();
 
-                    return $isInoviceTab && $superAdmin;
+                    return $isAllowedTab && $superAdmin;
                 }),
 
             \Filament\Actions\CreateAction::make(),

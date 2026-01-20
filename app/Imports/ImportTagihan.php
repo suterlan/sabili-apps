@@ -33,6 +33,8 @@ class ImportTagihan implements ToModel, WithHeadingRow
 
         $linkBayar = isset($row['link_pembayaran_opsional']) ? trim($row['link_pembayaran_opsional']) : null;
 
+        $viaInput = isset($row['via_ptsp_halalmax']) ? strtoupper(trim($row['via_ptsp_halalmax'])) : null;
+
         // Bersihkan Nominal (Hapus Rp, Titik, Koma jika ada, agar jadi integer murni)
         $rawNominal = isset($row['total_nominal_wajib_isi']) ? $row['total_nominal_wajib_isi'] : 0;
         $nominal = (float) preg_replace('/[^0-9]/', '', (string) $rawNominal);
@@ -60,7 +62,10 @@ class ImportTagihan implements ToModel, WithHeadingRow
         // Syarat: Milik User ini AND Statusnya 'Sertifikat Diterbitkan'
         // Kita kunci statusnya biar tidak salah update pengajuan yang masih baru/sudah lunas
         $pengajuan = Pengajuan::where('user_id', $user->id)
-            ->where('status_verifikasi', Pengajuan::STATUS_SERTIFIKAT)
+            ->whereIn('status_verifikasi', [
+                Pengajuan::STATUS_SERTIFIKAT,
+                Pengajuan::STATUS_FATWA
+            ])
             ->latest()
             ->first();
 
@@ -95,7 +100,7 @@ class ImportTagihan implements ToModel, WithHeadingRow
         // 2. PROSES DATABASE (Bungkus dengan Transaction)
         // ------------------------------------------------------------------
         try {
-            DB::transaction(function () use ($pengajuan, $noInvoice, $nominal, $linkBayar) {
+            DB::transaction(function () use ($pengajuan, $noInvoice, $nominal, $linkBayar, $viaInput) {
 
                 // 4. LOGIKA GROUPING INVOICE (CORE)
                 // firstOrCreate akan mengecek: Apakah 'nomor_invoice' ini sudah ada di DB?
@@ -112,6 +117,7 @@ class ImportTagihan implements ToModel, WithHeadingRow
                         'pendamping_id' => $pengajuan->pendamping_id, // Ambil pendamping dari pengajuan pertama
                         'total_nominal' => $nominal,
                         'link_pembayaran' => $linkBayar,
+                        'via' => $viaInput,
                         'tanggal_terbit' => now(),
                         'status_pembayaran' => 'BELUM DIBAYAR',
                     ]
