@@ -146,4 +146,12 @@ class DataRekeningResource extends Resource
     {
         return false;
     }
+
+    public static function canViewAny(): bool
+    {
+        return Auth::user()->isSuperAdmin()
+            || Auth::user()->isManajemen()
+            || Auth::user()->isAdmin()
+            || Auth::user()->isKoordinator();
+    }
 }

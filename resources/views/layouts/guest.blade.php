@@ -56,9 +56,7 @@
                             class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-full font-medium transition shadow-md text-sm">Dashboard</a>
                     @else
                         <a href="/admin/login"
-                            class="text-sm font-medium text-gray-700 hover:text-amber-600 transition hidden sm:block">Masuk</a>
-                        <a href="/admin/register"
-                            class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-full font-medium transition shadow-lg shadow-amber-600/20 text-sm">Daftar</a>
+                            class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-full font-medium transition shadow-lg shadow-amber-600/20 text-sm">Masuk</a>
                     @endauth
                 </div>
             </div>
