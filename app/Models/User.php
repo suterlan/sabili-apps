@@ -40,6 +40,7 @@ class User extends Authenticatable implements FilamentUser
         'nama_instansi',
         'nama_bank',
         'nomor_rekening',
+        'akun_linkaja',
         'file_ktp',
         'file_ijazah',
         'file_pas_foto',
@@ -229,6 +230,7 @@ class User extends Authenticatable implements FilamentUser
             'nama_instansi',
             'nama_bank',
             'nomor_rekening',
+            'akun_linkaja',
         ];
 
         // 2. Daftar kolom file/dokumen yang wajib diupload

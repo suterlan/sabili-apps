@@ -172,10 +172,65 @@ class PendampingResource extends Resource
                                 // Info Bank
                                 Section::make('Info Bank & Pendidikan')
                                     ->schema([
-                                        TextInput::make('nama_bank'),
+                                        // 1. FIELD SELECTOR (Hanya alat bantu pilih, tidak disimpan ke DB)
+                                        Select::make('bank_selector')
+                                            ->label('Pilih Bank')
+                                            ->options([
+                                                'BCA' => 'BCA',
+                                                'BNI' => 'BNI',
+                                                'BRI' => 'BRI',
+                                                'Mandiri' => 'Mandiri',
+                                                'BTN' => 'BTN',
+                                                'CIMB Niaga' => 'CIMB Niaga',
+                                                'Lainnya' => 'Lainnya (Tulis Manual)',
+                                            ])
+                                            ->live() // Wajib live agar reaktif
+                                            ->afterStateUpdated(function ($state, Set $set) {
+                                                // Logika: Jika user pilih bank standar, langsung isi ke field asli
+                                                // Jika pilih 'Lainnya', kosongkan field asli agar user mengetik
+                                                if ($state !== 'Lainnya') {
+                                                    $set('nama_bank', $state);
+                                                } else {
+                                                    $set('nama_bank', null);
+                                                }
+                                            })
+                                            ->afterStateHydrated(function ($component, $state, $record) {
+                                                // Logika untuk Mode Edit:
+                                                // Cek apakah data di database termasuk opsi standar atau manual
+                                                if ($record) {
+                                                    $bank = $record->nama_bank;
+                                                    $standardOptions = ['BCA', 'BNI', 'BRI', 'Mandiri', 'BTN', 'CIMB Niaga'];
+
+                                                    if (in_array($bank, $standardOptions)) {
+                                                        $component->state($bank);
+                                                    } else {
+                                                        $component->state('Lainnya');
+                                                    }
+                                                }
+                                            })
+                                            ->dehydrated(false) // Field ini tidak akan dikirim ke database
+                                            ->required(),
+
+                                        // 2. FIELD ASLI (Disimpan ke Database)
+                                        TextInput::make('nama_bank')
+                                            ->label('Nama Bank (Manual)')
+                                            ->placeholder('Masukkan nama bank...')
+                                            ->required()
+                                            // Tampilkan field ini HANYA jika user memilih 'Lainnya'
+                                            ->visible(fn(Get $get) => $get('bank_selector') === 'Lainnya')
+                                            // Agar tetap tersimpan meskipun di-hidden (saat pilih BCA misalnya)
+                                            ->dehydrated(true),
+
                                         TextInput::make('nomor_rekening'),
                                         TextInput::make('pendidikan_terakhir'),
                                         TextInput::make('nama_instansi')->label('Instansi Pendidikan'),
+                                        // --- TAMBAHAN LINKAJA ---
+                                        TextInput::make('akun_linkaja')
+                                            ->label('Nomor LinkAja')
+                                            ->placeholder('Contoh: 081234567890')
+                                            ->tel() // Menampilkan keypad angka di HP
+                                            ->required()
+                                            ->maxLength(20),
                                     ])->columns(2),
 
                                 // Panggil Schema Dokumen Statis dari Model User
@@ -216,6 +271,11 @@ class PendampingResource extends Resource
 
                 Tables\Columns\TextColumn::make('phone')
                     ->label('Kontak'),
+
+                Tables\Columns\TextColumn::make('akun_linkaja')
+                    ->label('LinkAja')
+                    ->icon('heroicon-m-device-phone-mobile')
+                    ->copyable(), // Agar admin bisa copy nomornya dengan mudah 
             ])
             ->defaultSort('anggota_binaan_count', 'desc') // Urutkan dari yang terbanyak
             ->headerActions([
