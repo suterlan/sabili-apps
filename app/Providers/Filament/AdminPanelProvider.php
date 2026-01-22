@@ -30,6 +30,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            ->breadcrumbs(false)
 
             // TAMBAHKAN BARIS INI:
             ->registration(Register::class)

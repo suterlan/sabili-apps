@@ -133,3 +133,48 @@ html {
 .dark .status-card-rejected svg {
     color: #f87171 !important; /* Icon Merah Cerah */
 }
+
+/* === START TABLE COMPACT STYLE === */
+
+/* 1. Mengecilkan Padding Header Tabel */
+.fi-ta-header-cell {
+    padding-top: 0.5rem !important; /* Default biasanya lebih besar */
+    padding-bottom: 0.5rem !important;
+}
+
+/* 2. Mengecilkan Padding Isi Tabel (Baris Data) */
+.fi-ta-cell {
+    padding-top: 0.25rem !important; /* Sangat rapat (sekitar 4px) */
+    padding-bottom: 0.25rem !important;
+}
+
+/* 3. Memperkecil ukuran font tabel agar proporsional dengan baris yang rapat */
+.fi-ta-table {
+    font-size: 13px !important;
+}
+
+/* 4. (Opsional) Memastikan container kolom lainnya (seperti Badge/Icon) juga rapat */
+.fi-ta-col-wrp {
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+}
+
+/* === SUPER COMPACT TABLE STYLE === */
+
+/* 1. TARGET UTAMA: Menimpa padding bawaan py-4 pada teks */
+.fi-ta-text {
+    padding-top: 4px !important; /* Aslinya 16px, kita paksa jadi 4px */
+    padding-bottom: 4px !important;
+}
+
+/* 2. Menghilangkan Gap/Jarak antar baris teks dalam 1 sel (jika ada description) */
+.fi-ta-text.gap-y-1 {
+    row-gap: 0 !important; /* Merapatkan baris judul & deskripsi */
+}
+
+/* 3. Merapatkan Padding horizontal (Kiri-Kanan) jika px-3 dirasa terlalu lebar */
+.fi-ta-text {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+/* === END TABLE COMPACT STYLE === */

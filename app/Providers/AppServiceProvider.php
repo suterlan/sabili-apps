@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use League\Flysystem\Filesystem;
 use Masbug\Flysystem\GoogleDriveAdapter;
+use Filament\Tables\Table;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,6 +25,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Konfigurasi Global untuk Semua Tabel
+        Table::configureUsing(function (Table $table): void {
+            $table
+                ->striped() // Membuat baris belang-belang (wajib agar data mudah dibaca)
+                ->defaultPaginationPageOption(25); // Set default 25 baris
+            // HAPUS baris density() karena tidak valid
+        });
+
         try {
             Storage::extend('google', function ($app, $config) {
                 $options = [];

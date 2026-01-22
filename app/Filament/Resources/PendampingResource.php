@@ -424,6 +424,7 @@ class PendampingResource extends Resource
                                     TextEntry::make('nomor_rekening')->label('No. Rekening')->copyable(),
                                     TextEntry::make('pendidikan_terakhir')->badge()->color('info'),
                                     TextEntry::make('nama_instansi')->label('Sekolah/Kampus'),
+                                    TextEntry::make('akun_linkaja')->label('Nomor LinkAja')->copyable(),
                                 ])->columns(2),
                         ])->columnSpan(['default' => 3, 'lg' => 2]),
 
