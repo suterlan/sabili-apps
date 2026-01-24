@@ -517,9 +517,15 @@ class PengajuanResource extends Resource
                             return false;
                         }
 
+                        // [PERBAIKAN DI SINI]
+                        // B. Tab Fatwa -> Izinkan Super Admin ATAU Verifikator Asli
+                        if ($tab === 'fatwa') {
+                            return $isSuperAdmin || $isVerificatorAsli;
+                        }
+
                         // Tab Siap Invoice / Invoice / Fatwa -> Butuh Super Admin (atau Verifikator Authorized)
                         // Disini kita izinkan SuperAdmin untuk tab Fatwa & Invoice
-                        if (in_array($tab, ['siap_invoice', 'invoice', 'fatwa'])) {
+                        if (in_array($tab, ['siap_invoice', 'invoice'])) {
                             return $isSuperAdmin;
                         }
 
