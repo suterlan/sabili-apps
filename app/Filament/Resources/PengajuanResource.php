@@ -561,7 +561,8 @@ class PengajuanResource extends Resource
                                         // Ubah Logika: Dari Fatwa LANGSUNG ke Invoice (Skip Sertifikat)
                                         if ($currentTab === 'fatwa') {
                                             return [
-                                                Pengajuan::STATUS_INVOICE => 'Buat Invoice (Tanpa Sertifikat)',
+                                                Pengajuan::STATUS_SERTIFIKAT => 'Buat Sertifikat',
+                                                Pengajuan::STATUS_INVOICE => 'Buat Invoice',
                                                 Pengajuan::STATUS_PENGAJUAN_DITOLAK => 'Tolak / Revisi',
                                             ];
                                         }
