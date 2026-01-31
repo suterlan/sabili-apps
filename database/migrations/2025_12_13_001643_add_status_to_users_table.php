@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             // Default 'pending' artinya butuh verifikasi dulu
-            // Kita taruh setelah kolom 'role'
+            // pending, verified, rejected
             $table->string('status')->default('pending')->after('role');
         });
     }

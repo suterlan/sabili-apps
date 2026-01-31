@@ -185,6 +185,7 @@ class UserResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->defaultSort('created_at', 'desc') // Urutkan data berdasarkan created_at secara descending (terbaru dulu)
             ->columns([
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('email'),

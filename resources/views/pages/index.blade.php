@@ -31,7 +31,7 @@
 
                         <div class="mt-8 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
                             <div class="rounded-md shadow">
-                                <a href="/admin/register"
+                                <a href="{{ route('member.register') }}"
                                     class="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 md:py-4 md:text-lg transition">Gabung
                                     Member</a>
                             </div>
@@ -129,7 +129,7 @@
                         Rp 50.000 <span class="ml-1 text-2xl font-medium text-gray-500">/bulan</span>
                     </div>
                     <p class="mt-2 text-sm text-gray-500 italic">
-                        *Tagihan dikirim setelah data usaha diverifikasi Admin
+                        Biaya keanggotaan untuk mendapatkan akses penuh ke semua fitur dan layanan Sabili.
                     </p>
                 </div>
                 <div class="px-6 pt-6 pb-8 bg-gray-50 sm:p-10 sm:pt-6">
@@ -142,7 +142,7 @@
                                 class="text-gray-700">Prioritas Event Komunitas</span></li>
                     </ul>
 
-                    <a href="/admin/register"
+                    <a href="{{ route('member.register') }}"
                         class="block w-full text-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-gray-900 hover:bg-gray-800 transition">
                         Daftar & Ajukan Verifikasi
                     </a>

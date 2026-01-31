@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\GoogleDriveImageController;
+use App\Http\Controllers\MemberRegistrationController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\PaymentCallbackController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PageController::class, 'index'])->name('page.index');
@@ -16,7 +18,9 @@ Route::get('/drive-image/{path}', [GoogleDriveImageController::class, 'show'])
     ->name('drive.image')
     ->middleware('auth'); // Sesuaikan middleware keamanan Anda
 
-// Route khusus untuk Demo Reviewer Duitku
-Route::get('/demo/invoice-simulation', function () {
-    return view('pages.invoice-demo');
-})->name('demo.invoice');
+// Form & Proses Register
+Route::get('/member/register', [MemberRegistrationController::class, 'showForm'])->name('member.register');
+Route::post('/member/register', [MemberRegistrationController::class, 'registerAndPay'])->name('member.register.store');
+
+// Halaman Selesai Bayar
+Route::get('/payment/finish', [PaymentCallbackController::class, 'finish'])->name('payment.finish');
