@@ -23,12 +23,31 @@ class MemberRegistrationController extends Controller
     public function registerAndPay(Request $request)
     {
         // A. Validasi
+        // A. Validasi dengan Pesan Bahasa Indonesia
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'phone' => 'required|numeric',
-            'address' => 'required|string|max:500',
+            'name'     => 'required|string|max:255',
+            'email'    => 'required|email|unique:users,email',
+            'phone'    => 'required|numeric|min_digits:10', // Contoh validasi digit
+            'address'  => 'required|string|max:500',
             'password' => 'required|min:8|confirmed',
+        ], [
+            // Custom Messages (Terjemahan Error)
+            'required'   => ':attribute wajib diisi.',
+            'string'     => ':attribute harus berupa teks.',
+            'email'      => 'Format :attribute tidak valid.',
+            'unique'     => ':attribute sudah terdaftar, gunakan yang lain.',
+            'numeric'    => ':attribute harus berupa angka.',
+            'min'        => ':attribute minimal berisi :min karakter.',
+            'min_digits' => ':attribute minimal :min digit angka.',
+            'confirmed'  => 'Konfirmasi :attribute tidak cocok.',
+            'max'        => ':attribute maksimal :max karakter.',
+        ], [
+            // Custom Attributes (Nama Kolom agar tidak "name" tapi "Nama Lengkap")
+            'name'     => 'Nama Lengkap',
+            'email'    => 'Alamat Email',
+            'phone'    => 'Nomor WhatsApp',
+            'address'  => 'Alamat',
+            'password' => 'Kata Sandi',
         ]);
 
         // MULAI TRANSAKSI DATABASE
@@ -60,9 +79,12 @@ class MemberRegistrationController extends Controller
 
             // D. Siapkan Parameter Pembayaran
             $paymentAmount = 50000; // Harga Member
+            // Gunakan time() + random string agar order ID benar-benar unik saat retry
+            $merchantOrderId = 'REG-' . time() . '-' . $user->id;
+
             $params = [
                 'paymentAmount' => $paymentAmount,
-                'merchantOrderId' => 'REG-' . time() . '-' . $user->id, // ID Unik Order
+                'merchantOrderId' => $merchantOrderId,
                 'productDetails' => 'Pendaftaran Keanggotaan',
                 'additionalParam' => '',
                 'merchantUserInfo' => '',
@@ -105,14 +127,25 @@ class MemberRegistrationController extends Controller
 
                 // Jika gagal dapat URL
                 Log::error('Duitku Error: ' . json_encode($result));
-                return back()->with('error', 'Gagal membuat pembayaran. Cek log.');
+
+                // [UPDATE] Ambil pesan error spesifik dari Duitku
+                $pesanError = 'Gagal membuat pembayaran.';
+                if (isset($result['statusMessage'])) {
+                    $pesanError .= ' Pihak pembayaran merespon: "' . $result['statusMessage'] . '"';
+                } elseif (isset($result['message'])) {
+                    $pesanError .= ' Keterangan: ' . $result['message'];
+                }
+
+                return back()->withInput()->with('error', $pesanError);
             }
         } catch (\Exception $e) {
-            // EXCEPTION/CRASH: Rollback database (Batalkan pembuatan user)
+            // EXCEPTION/CRASH (SYSTEM ERROR)
             \Illuminate\Support\Facades\DB::rollBack();
 
             Log::error('Duitku Exception: ' . $e->getMessage());
-            return back()->with('error', 'Terjadi kesalahan sistem pembayaran.');
+
+            // [UPDATE] Pesan user-friendly, jangan tampilkan raw system error ke user
+            return back()->withInput()->with('error', 'Terjadi gangguan koneksi ke sistem pembayaran. Silakan coba sesaat lagi.');
         }
     }
 }
