@@ -504,7 +504,6 @@ class PengajuanResource extends Resource
                         $tab = $livewire->activeTab ?? '';
 
                         $isSuperAdmin = $user->isSuperAdmin();
-
                         // 2. Cek apakah user adalah pemilik data (Verifikator Asli)
                         $isVerificatorAsli = $user->id === $record->verificator_id;
 
@@ -517,7 +516,6 @@ class PengajuanResource extends Resource
                             return false;
                         }
 
-                        // [PERBAIKAN DI SINI]
                         // B. Tab Fatwa -> Izinkan Super Admin ATAU Verifikator Asli
                         if ($tab === 'fatwa') {
                             return $isSuperAdmin || $isVerificatorAsli;
@@ -530,10 +528,10 @@ class PengajuanResource extends Resource
                         }
 
                         // C. Tab Kerja Lainnya (Revisi, Proses, Dikirim) -> HANYA VERIFIKATOR ASLI
-                        // Super admin tidak boleh ganggu proses verifikasi awal, atau boleh (opsional)
+                        // Super admin boleh melakukan verifikasi di tab ini
                         // Di sini kita set hanya verifikator asli agar sesuai flow
-                        if (in_array($tab, ['revisi', 'proses', 'dikirim'])) {
-                            return $isVerificatorAsli;
+                        if (in_array($tab, ['revisi', 'proses', 'dikirim'])) { // perbaiki sekarang superadmin dapat melakukan verifikasi pada tab ini
+                            return $isSuperAdmin || $isVerificatorAsli;
                         }
 
                         return false; // Default hidden
@@ -824,6 +822,54 @@ class PengajuanResource extends Resource
                             ->success()
                             ->title('Status Diperbarui')
                             ->body($pesan)
+                            ->send();
+                    }),
+
+                Tables\Actions\Action::make('ganti_sertifikat')
+                    ->label('Ganti File')
+                    ->icon('heroicon-m-document-arrow-up')
+                    ->color('gray') // Warna netral agar tidak semencolok tombol verifikasi
+                    ->modalWidth('lg')
+                    // Hanya tampil jika:
+                    // 1. Sudah ada file sertifikat sebelumnya (artinya status sudah pernah diterbitkan)
+                    // 2. User adalah Superadmin ATAU Verifikator Asli
+                    ->visible(
+                        fn(Pengajuan $record) =>
+                        !empty($record->file_sertifikat) &&
+                            (auth()->user()->isSuperAdmin() || auth()->user()->isAdmin())
+                    )
+                    ->form([
+                        Section::make('Koreksi Dokumen')
+                            ->description('Ganti file sertifikat jika terjadi kesalahan upload tanpa mengubah status pengajuan.')
+                            ->schema([
+                                // Tampilkan info file lama (opsional, untuk UX)
+                                Placeholder::make('file_lama')
+                                    ->label('File Saat Ini')
+                                    ->content(fn($record) => basename($record->file_sertifikat)),
+
+                                FileUpload::make('file_sertifikat_baru')
+                                    ->label('Upload File Baru (PDF)')
+                                    ->directory('sertifikat-halal')
+                                    ->acceptedFileTypes(['application/pdf'])
+                                    ->maxSize(5120)
+                                    ->required() // Wajib diisi jika membuka menu ini
+                            ])
+                    ])
+                    ->action(function (Pengajuan $record, array $data) {
+                        // Hapus file lama dari storage jika perlu (Opsional, Filament biasanya handle replace)
+                        if ($record->file_sertifikat) {
+                            Storage::disk('public')->delete($record->file_sertifikat);
+                        }
+
+                        // Update database hanya kolom file_sertifikat
+                        $record->update([
+                            'file_sertifikat' => $data['file_sertifikat_baru']
+                        ]);
+
+                        Notification::make()
+                            ->success()
+                            ->title('File Berhasil Diganti')
+                            ->body('Sertifikat halal telah diperbarui.')
                             ->send();
                     }),
             ]);

@@ -55,6 +55,8 @@ class MemberRegistrationController extends Controller
             );
             $duitkuConfig->setSandboxMode(env('DUITKU_SANDBOX_MODE')); // True/False
             $duitkuConfig->setSanitizedMode(false);
+            // TAMBAHKAN INI: Matikan log internal library agar tidak perlu mkdir()
+            $duitkuConfig->setDuitkuLogs(false);
 
             // D. Siapkan Parameter Pembayaran
             $paymentAmount = 50000; // Harga Member
