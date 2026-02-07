@@ -20,6 +20,8 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Auth;
 use ZipArchive;
+use Duitku\Config as DuitkuConfig;
+use Duitku\Pop as DuitkuPop;
 
 class TagihanResource extends Resource
 {
@@ -120,6 +122,13 @@ class TagihanResource extends Resource
                     ]),
             ])
             ->actions([
+                // ACTION BARU: BAYAR VIA DUITKU
+                // Sembunyikan tombol jika sudah dibayar
+                Tables\Actions\Action::make('bayar_duitku')
+                    ->label('Bayar Sekarang')
+                    ->action(fn(Tagihan $record) => redirect()->away(\App\Services\DuitkuInvoiceService::generatePaymentUrl($record)))
+                    ->visible(fn(Tagihan $record) => $record->status_pembayaran !== 'DIBAYAR'),
+
                 // TOMBOL CEPAT: SET LUNAS
                 Action::make('set_lunas')
                     ->label('Konfirmasi Lunas')
@@ -144,11 +153,17 @@ class TagihanResource extends Resource
                             ->send();
                     })
                     // Sembunyikan tombol jika sudah dibayar
-                    ->visible(fn(Tagihan $record) => $record->status_pembayaran !== 'DIBAYAR'),
+                    // hanya tampilkan untuk superadmin
+                    ->visible(fn(Tagihan $record) => $record->status_pembayaran !== 'DIBAYAR' && Auth::user()->isSuperAdmin()),
 
-                Tables\Actions\EditAction::make()->icon('heroicon-m-list-bullet')->label('Rincian'),
+                // TOMBOL RINCIAN INVOICE
+                // tampilkan hanya untuk superadmin atau admin
+                Tables\Actions\EditAction::make()->icon('heroicon-m-list-bullet')->label('Rincian')
+                    ->visible(fn(Tagihan $record) => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
 
-                Tables\Actions\Action::make('pdf')
+                // TOMBOL DOWNLOAD PDF
+                // tampilkan hanya untuk superadmin atau admin
+                Action::make('pdf')
                     ->label('Download PDF')
                     ->icon('heroicon-m-arrow-down-tray')
                     ->color('primary')
@@ -163,11 +178,21 @@ class TagihanResource extends Resource
                         return response()->streamDownload(function () use ($pdf) {
                             echo $pdf->output();
                         }, 'Invoice-' . $record->nomor_invoice . '.pdf');
-                    }),
+                    })
+                    ->visible(fn(Tagihan $record) => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
             ])
+
+            // BULK ACTIONS
+            // tampilkna hanya untuk superadmin atau admin
             ->bulkActions([
                 // Tables\Actions\BulkActionGroup::make([
-                Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\DeleteBulkAction::make()
+                    ->label('Hapus Terpilih')
+                    ->icon('heroicon-m-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
                 // ]),
 
                 Tables\Actions\BulkActionGroup::make([
@@ -211,7 +236,8 @@ class TagihanResource extends Resource
                 ])
                     ->label('Download Invoice')
                     ->icon('heroicon-m-arrow-down-tray')
-                    ->color('info'),
+                    ->color('info')
+                    ->visible(fn() => Auth::user()->isSuperAdmin() || Auth::user()->isAdmin()),
             ]);
     }
     public static function getRelations(): array
@@ -235,7 +261,8 @@ class TagihanResource extends Resource
         // Menu ini bisa dilihat oleh: 
         return Auth::user()->isSuperAdmin()
             || Auth::user()->isManajemen()
-            || Auth::user()->isAdmin();
+            || Auth::user()->isAdmin()
+            || Auth::user()->isPendamping();
     }
 
     public static function getEloquentQuery(): Builder
@@ -255,8 +282,20 @@ class TagihanResource extends Resource
         // 4. Jika Admin Biasa, filter data
         // Tampilkan Tagihan DIMANA tagihan tersebut MEMILIKI relasi pengajuans
         // YANG kolom 'verificator_id'-nya adalah user yang sedang login.
-        return $query->whereHas('pengajuans', function (Builder $q) use ($user) {
-            $q->where('verificator_id', $user->id);
-        });
+        if ($user->isAdmin()) {
+            return $query->whereHas('pengajuans', function (Builder $q) use ($user) {
+                $q->where('verificator_id', $user->id);
+            });
+        }
+
+        // Jika Pendamping: lihat tagihan atas nama mereka
+        if ($user->isPendamping()) {
+            return $query->whereHas('pengajuans', function (Builder $q) use ($user) {
+                $q->where('pendamping_id', $user->id);
+            });
+        }
+
+        // Default: kembalikan query tanpa filter (mungkin tidak perlu, tapi aman)
+        return $query;
     }
 }

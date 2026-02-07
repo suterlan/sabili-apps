@@ -97,6 +97,31 @@ class TagihanPendampingWidget extends BaseWidget
                     ->default('BELUM DIBAYAR'), // Default tampilkan yang belum bayar saja biar fokus
             ])
             ->actions([
+                // Tombol Bayar
+                Action::make('bayar_sekarang')
+                    ->label('Bayar Sekarang')
+                    ->icon('heroicon-m-credit-card')
+                    ->color('success')
+                    ->visible(fn(Tagihan $record) => $record->status_pembayaran !== 'DIBAYAR')
+                    ->action(function (Tagihan $record) {
+                        // Jika sudah ada link, langsung redirect
+                        if ($record->link_pembayaran) {
+                            return redirect()->away($record->link_pembayaran);
+                        }
+
+                        // Jika belum ada, buat baru lewat Service
+                        try {
+                            $url = \App\Services\DuitkuInvoiceService::generatePaymentUrl($record);
+                            return redirect()->away($url);
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Gagal membuat pembayaran')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+
                 // ACTION BARU: Tombol "Lihat Detail" untuk melihat siapa saja yg ada di invoice ini
                 Action::make('rincian')
                     ->label('Lihat rincian')
