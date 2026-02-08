@@ -40,8 +40,7 @@
                         <a href="#keuntungan"
                             class="text-sm font-medium text-gray-600 hover:text-amber-600 transition">Keuntungan</a>
                         <a href="#biaya"
-                            class="text-sm font-medium text-gray-600 hover:text-amber-600 transition">Biaya
-                            Keanggotaan</a>
+                            class="text-sm font-medium text-gray-600 hover:text-amber-600 transition">Biaya</a>
                     @else
                         <a href="/"
                             class="text-sm font-medium text-gray-600 hover:text-amber-600 transition flex items-center gap-2">

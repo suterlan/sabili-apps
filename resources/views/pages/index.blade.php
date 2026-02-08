@@ -114,39 +114,80 @@
         </div>
     </div>
 
-    <div class="bg-gray-50 py-16" id="biaya">
+    <div class="bg-gray-50 py-16 border-t border-gray-200" id="biaya">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center">
-                <h2 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">Biaya Keanggotaan</h2>
-                {{-- <p class="mt-4 text-lg text-gray-500">Investasi transparan tanpa biaya tersembunyi.</p> --}}
+            <div class="text-center mb-12">
+                <h2 class="text-base text-amber-600 font-semibold tracking-wide uppercase">Daftar Harga & Layanan</h2>
+                <p class="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+                    Transparansi Biaya Layanan
+                </p>
+                <p class="mt-4 max-w-2xl text-xl text-gray-500 mx-auto">
+                    Investasi terjangkau untuk pertumbuhan usaha Anda yang berkelanjutan.
+                </p>
             </div>
 
-            <div class="mt-10 max-w-lg mx-auto bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
-                <div class="px-6 py-8 sm:p-10 sm:pb-6 text-center">
-                    <span
-                        class="inline-flex px-4 py-1 rounded-full text-sm font-semibold tracking-wide uppercase bg-amber-100 text-amber-600">Membership</span>
-                    <div class="mt-4 flex justify-center items-baseline text-6xl font-extrabold text-gray-900">
-                        Rp 50.000 <span class="ml-1 text-2xl font-medium text-gray-500">/bulan</span>
+            <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold text-gray-900">Jasa Input Data Admin</h3>
+                        <p class="mt-4 text-gray-500 text-sm">Bantuan teknis pengisian formulir sertifikasi halal dan
+                            verifikasi data pelaku usaha di sistem pusat.</p>
+                        <p class="mt-8">
+                            <span class="text-4xl font-extrabold text-gray-900">Rp 20.000</span>
+                            <span class="text-base font-medium text-gray-500">/data</span>
+                        </p>
                     </div>
-                    <p class="mt-2 text-sm text-gray-500 italic">
-                        Biaya keanggotaan untuk mendapatkan akses penuh ke semua fitur dan layanan Sabili.
-                    </p>
                 </div>
-                <div class="px-6 pt-6 pb-8 bg-gray-50 sm:p-10 sm:pt-6">
-                    <ul class="space-y-4 mb-6">
-                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-3"></i> <span
-                                class="text-gray-700">Akses Penuh Dashboard</span></li>
-                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-3"></i> <span
-                                class="text-gray-700">Pendampingan Sertifikasi Halal</span></li>
-                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-3"></i> <span
-                                class="text-gray-700">Prioritas Event Komunitas</span></li>
-                    </ul>
 
-                    <a href="{{ route('member.register') }}"
-                        class="block w-full text-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-gray-900 hover:bg-gray-800 transition">
-                        Daftar & Ajukan Verifikasi
-                    </a>
+                <div
+                    class="relative bg-white rounded-2xl shadow-xl border-2 border-amber-500 flex flex-col transform lg:-mt-4 transition">
+                    <div
+                        class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-amber-500 text-white px-4 py-1 rounded-full text-sm font-bold uppercase tracking-wider">
+                        Paling Populer
+                    </div>
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold text-gray-900">Membership Sabili</h3>
+                        <p class="mt-4 text-gray-500 text-sm">Akses penuh dashboard, jejaring komunitas, dan pendampingan
+                            eksklusif selama satu bulan.</p>
+                        <p class="mt-8">
+                            <span class="text-5xl font-extrabold text-gray-900">Rp 50.000</span>
+                            <span class="text-base font-medium text-gray-500">/bulan</span>
+                        </p>
+                        <ul class="mt-8 space-y-4">
+                            <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-3"></i> <span
+                                    class="text-gray-700 text-sm">Akses Penuh Dashboard</span></li>
+                            <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-3"></i> <span
+                                    class="text-gray-700 text-sm">Pendampingan Sertifikasi Halal</span></li>
+                            <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-3"></i> <span
+                                    class="text-gray-700 text-sm">Prioritas Event Komunitas</span></li>
+                        </ul>
+                    </div>
+                    <div class="p-8 pt-0">
+                        <a href="{{ route('member.register') }}"
+                            class="block w-full text-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-amber-600 hover:bg-amber-700 transition">
+                            Daftar Sekarang
+                        </a>
+                    </div>
                 </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold text-gray-900">Cetak Stiker Halal</h3>
+                        <p class="mt-4 text-gray-500 text-sm">Cetak label sertifikasi halal resmi dengan material
+                            berkualitas untuk kemasan produk Anda.</p>
+                        <p class="mt-8">
+                            <span class="text-4xl font-extrabold text-gray-900">Rp 10.000</span>
+                            <span class="text-base font-medium text-gray-500">/5 pcs</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-12 text-center">
+                <p class="text-sm text-gray-400 italic">
+                    * Estimasi biaya layanan tambahan berkisar antara Rp 10.000 hingga Rp 250.000 tergantung pada volume
+                    data dan kebutuhan logistik pendampingan lapangan.
+                </p>
             </div>
         </div>
     </div>

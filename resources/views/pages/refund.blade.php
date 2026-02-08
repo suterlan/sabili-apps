@@ -11,46 +11,47 @@
 
         <div
             class="prose prose-amber max-w-none text-gray-600 space-y-6 bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-            <p>Kami berkomitmen memberikan layanan terbaik. Namun, sebagai penyedia jasa, kami memiliki kebijakan
-                pengembalian dana sebagai berikut:</p>
-
             <section>
                 <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <i class="fas fa-check-circle text-green-500"></i> 1. Kondisi Refund yang Diterima
+                    <i class="fas fa-check-circle text-green-500"></i> 1. Kondisi Refund (Diterima)
                 </h3>
                 <div class="ml-7">
-                    <p class="mb-2">Pengembalian dana dapat diajukan apabila:</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li>Terjadi pembayaran ganda (double payment) akibat kesalahan sistem.</li>
-                        <li>Layanan belum diproses sama sekali oleh tim Pendamping Sabili dalam waktu 7x24 jam setelah
-                            pembayaran dikonfirmasi.</li>
-                    </ul>
-                </div>
-            </section>
-
-            <hr class="border-gray-200">
-
-            <section>
-                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <i class="fas fa-times-circle text-red-500"></i> 2. Kondisi Non-Refundable
-                </h3>
-                <div class="ml-7">
-                    <p class="bg-red-50 p-4 rounded-md text-red-800 text-sm mb-3 border-l-4 border-red-500">
-                        <strong>PENTING:</strong> Dana <strong>TIDAK DAPAT</strong> dikembalikan apabila proses pendampingan
-                        sudah berjalan.
-                    </p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li>Data sudah diinput ke sistem SiHalal/OSS.</li>
-                        <li>Pengajuan ditolak oleh Komite Fatwa karena bahan baku tidak memenuhi standar syariat.</li>
-                        <li>Pemohon membatalkan pengajuan sepihak saat proses berjalan.</li>
+                    <ul class="list-disc pl-5 space-y-2">
+                        <li><strong>Pembayaran Ganda:</strong> Jika terjadi pendebetan ganda oleh sistem Duitku untuk
+                            invoice yang sama.</li>
+                        <li><strong>Produk Rusak:</strong> Khusus untuk pembelian <strong>Stiker Halal (Rp 10.000)</strong>,
+                            dana akan dikembalikan atau dikirim ulang jika stiker diterima dalam keadaan cacat/salah cetak
+                            dengan bukti video unboxing.</li>
+                        <li><strong>Kegagalan Layanan:</strong> Layanan admin belum diproses dalam 7 hari kerja karena
+                            kendala internal kami.</li>
                     </ul>
                 </div>
             </section>
 
             <section>
-                <h3 class="text-lg font-bold text-gray-900">3. Cara Mengajukan</h3>
-                <p>Silakan hubungi kami melalui WhatsApp <strong>0857-1295-3879</strong> atau email ke
-                    <strong>sabiliapps@gmail.com</strong> dengan menyertakan bukti transfer.</p>
+                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <i class="fas fa-times-circle text-red-500"></i> 2. Kondisi Non-Refundable (Ditolak)
+                </h3>
+                <div class="ml-7 bg-red-50 p-4 rounded-md text-red-800 text-sm border-l-4 border-red-500 mb-4">
+                    <strong>PENTING:</strong> Dana tidak dapat dikembalikan jika proses pekerjaan telah dilakukan.
+                </div>
+                <div class="ml-7">
+                    <ul class="list-disc pl-5 space-y-2">
+                        <li><strong>Jasa Input Data (Rp 20.000):</strong> Dana tidak dapat ditarik kembali jika data sudah
+                            berhasil diinput ke sistem pemerintah, terlepas dari hasil akhir pengajuan (Diterima/Ditolak).
+                        </li>
+                        <li><strong>Membership (Rp 50.000):</strong> Biaya langganan yang sudah berjalan tidak dapat
+                            dikembalikan secara prorata.</li>
+                        <li><strong>Kesalahan Pengguna:</strong> Salah memberikan bahan baku atau membatalkan pengajuan saat
+                            audit sedang berlangsung.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="mt-8">
+                <h3 class="text-lg font-bold text-gray-900">3. Jangka Waktu Refund</h3>
+                <p>Proses pengembalian dana melalui payment gateway membutuhkan waktu <strong>7 hingga 14 hari
+                        kerja</strong> sesuai dengan kebijakan bank penarik atau penyedia e-wallet terkait.</p>
             </section>
         </div>
     </div>
