@@ -14,6 +14,8 @@ use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\PengajuanExport;
+use Filament\Forms\Components\DatePicker;
 
 class ListPengajuans extends ListRecords
 {
@@ -208,6 +210,33 @@ class ListPengajuans extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            // ------------------------------------------------------------------
+            // 1. ACTION: EXPORT EXCEL DENGAN TANGGAL
+            // ------------------------------------------------------------------
+            Action::make('export_excel')
+                ->label('Export Excel')
+                ->icon('heroicon-m-arrow-down-tray')
+                ->color('success')
+                ->form([
+                    DatePicker::make('start_date')
+                        ->label('Dari Tanggal')
+                        ->default(now()->startOfMonth())
+                        ->required(),
+                    DatePicker::make('end_date')
+                        ->label('Sampai Tanggal')
+                        ->default(now())
+                        ->required(),
+                ])
+                ->action(function (array $data) {
+                    return Excel::download(
+                        new PengajuanExport($data['start_date'], $data['end_date']),
+                        'Pengajuan_invoice' . date('Y-m-d_H-i') . '.xlsx'
+                    );
+                }),
+
+            // ------------------------------------------------------------------
+            // 3. GROUP: IMPORT & TEMPLATE
+            // ------------------------------------------------------------------    
             ActionGroup::make([
                 // 1. Download Template
                 Action::make('download_siap_invoice')

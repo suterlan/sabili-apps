@@ -21,6 +21,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Columns\TextColumn\TextColumnSize;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Collection;
 
 class PengajuanResource extends Resource
 {
@@ -65,7 +67,8 @@ class PengajuanResource extends Resource
 
                 Tables\Columns\TextColumn::make('user.district.name')
                     ->label('Kecamatan')
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('pendamping.name')
                     ->label('Pendamping')
@@ -154,6 +157,11 @@ class PengajuanResource extends Resource
                     ->label('Verifikator')
                     ->placeholder('Belum Diklaim')
                     ->icon('heroicon-m-user'),
+
+                Tables\Columns\TextColumn::make('verified_at')
+                    ->label('Terakhir Diverifikasi')
+                    ->dateTime('d M Y H:i')
+                    ->sortable(),
             ])
             ->recordUrl(null) // Matikan fungsi klik baris
             ->actions([
@@ -872,6 +880,67 @@ class PengajuanResource extends Resource
                             ->body('Sertifikat halal telah diperbarui.')
                             ->send();
                     }),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make()
+                        // LOGIC VISIBILITY YANG LEBIH KETAT
+                        ->visible(function ($livewire) {
+                            // 1. Cek apakah properti activeTab ada di komponen Livewire saat ini
+                            if (property_exists($livewire, 'activeTab')) {
+                                return $livewire->activeTab === 'invoice';
+                            }
+                            return false;
+                        }),
+
+                    // --- CUSTOM BULK ACTION: SELESAI ---
+                    Tables\Actions\BulkAction::make('mark_invoice_done')
+                        ->label('Selesaikan Terpilih')
+                        ->icon('heroicon-m-check-badge')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Selesaikan Pengajuan')
+                        ->modalDescription('Apakah Anda yakin ingin menyelesaikan pengajuan yang dipilih? Status akan berubah menjadi Selesai dan Tanggal Verifikasi akan diperbarui.')
+
+                        // LOGIC VISIBILITY YANG LEBIH KETAT
+                        ->visible(function ($livewire) {
+                            // 1. Cek apakah properti activeTab ada di komponen Livewire saat ini
+                            if (property_exists($livewire, 'activeTab')) {
+                                return $livewire->activeTab === 'invoice';
+                            }
+                            return false;
+                        })
+
+                        // Logic Utama
+                        ->action(function (Collection $records) {
+                            try {
+                                DB::transaction(function () use ($records) {
+                                    // Loop setiap record agar event model tetap jalan (opsional)
+                                    // atau update massal untuk performa
+                                    $records->each(function ($record) {
+                                        if ($record->status_verifikasi === Pengajuan::STATUS_INVOICE) {
+                                            $record->update([
+                                                'status_verifikasi' => Pengajuan::STATUS_SELESAI,
+                                                'verified_at'       => now(), // Update timestamp
+                                            ]);
+                                        }
+                                    });
+                                });
+
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Berhasil diselesaikan')
+                                    ->success()
+                                    ->send();
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Terjadi Kesalahan')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
+                            }
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                ]),
             ]);
     }
 
